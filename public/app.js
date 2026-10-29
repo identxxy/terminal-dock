@@ -3540,7 +3540,11 @@ function renderSessions() {
     return;
   }
 
-  const markup = state.sessionTree
+  // tmux panes are listed flat: the session and window levels carry no
+  // information the pane card does not already show.
+  const markup = state.sessionBackend === "tmux"
+    ? `<section class="pane-grid pane-cards">${state.flatWindows.map((window) => paneCardMarkup(window)).join("")}</section>`
+    : state.sessionTree
     .map((osWindow) => {
       const osWindowAnchor = getFirstWindowInOsWindow(osWindow);
       const tabCreateDisabled = osWindowAnchor ? "" : "disabled";
@@ -3548,33 +3552,7 @@ function renderSessions() {
         .map((tab) => {
           const tabAnchor = getFirstWindowInTab(tab);
           const splitCreateDisabled = tabAnchor ? "" : "disabled";
-          const windows = (tab.windows || [])
-            .map((window) => {
-              const activeClass = Number(window.id) === Number(state.selectedWindowId) ? "selected" : "";
-              const badges = [];
-              if (window.is_active) badges.push("active");
-              if (window.is_focused) badges.push("focused");
-              if (window.is_attached) badges.push("attached");
-              if (isPaneCached(window.id)) badges.push("cached");
-              if (window.alternate_on) badges.push("alt-screen");
-              if (window.zoomed) badges.push("zoomed");
-              if (window.at_prompt) badges.push("prompt");
-
-              return `
-                <button class="pane-item ${activeClass}" type="button" data-window-id="${window.id}">
-                  <div class="pane-item-head">
-                    <strong>${escapeHtml(window.title || `Pane ${window.id}`)}</strong>
-                    <span>#${window.id} ${closeButtonMarkup("pane", window.id, window.title || `Pane ${window.id}`)}</span>
-                  </div>
-                  <p>${escapeHtml(window.cwd || "")}</p>
-                  <small>${escapeHtml(getWindowProcessLabel(window))}</small>
-                  <div class="badge-row">
-                    ${badges.map((badge) => `<span class="mini-badge">${badge}</span>`).join("")}
-                  </div>
-                </button>
-              `;
-            })
-            .join("");
+          const windows = (tab.windows || []).map((window) => paneCardMarkup(window)).join("");
 
           return `
             <article class="tab-block">
@@ -3645,6 +3623,42 @@ function renderSessions() {
 
   renderMobilePaneSwitcher();
   bindSessionCreateControls();
+}
+
+function paneBadges(window) {
+  const badges = [];
+  if (window.is_active) badges.push("active");
+  if (window.is_focused) badges.push("focused");
+  if (window.is_attached) badges.push("attached");
+  if (isPaneCached(window.id)) badges.push("cached");
+  if (window.alternate_on) badges.push("alt-screen");
+  if (window.zoomed) badges.push("zoomed");
+  if (window.at_prompt) badges.push("prompt");
+  return badges;
+}
+
+// Three rows: title with the pane number, cwd shortened in the middle so the
+// directory name stays visible, then the process beside the badges.
+function paneCardMarkup(window) {
+  const activeClass = Number(window.id) === Number(state.selectedWindowId) ? "selected" : "";
+  const title = window.title || `Pane ${window.id}`;
+  const cwd = window.cwd || "";
+  const cut = cwd.lastIndexOf("/");
+  const cwdHead = cut > 0 ? cwd.slice(0, cut + 1) : "";
+  const cwdTail = cut > 0 ? cwd.slice(cut + 1) : cwd;
+  return `
+    <button class="pane-item ${activeClass}" type="button" data-window-id="${window.id}">
+      <div class="pane-item-head">
+        <strong>${escapeHtml(title)}</strong>
+        <span>#${window.id} ${closeButtonMarkup("pane", window.id, title)}</span>
+      </div>
+      <p class="pane-cwd" title="${escapeAttribute(cwd)}"><span class="pane-cwd-head">${escapeHtml(cwdHead)}</span><span class="pane-cwd-tail">${escapeHtml(cwdTail)}</span></p>
+      <div class="badge-row">
+        <small>${escapeHtml(getWindowProcessLabel(window))}</small>
+        <span class="badge-list">${paneBadges(window).map((badge) => `<span class="mini-badge">${badge}</span>`).join("")}</span>
+      </div>
+    </button>
+  `;
 }
 
 function countOsWindowPanes(osWindow) {

@@ -5,7 +5,7 @@ A local web app that drives terminals from a browser: an iPad, a phone or anothe
 - `kitty`: the terminal is a GUI kitty window, so everything the browser does is also visible on that machine's physical display.
 - `tmux`: a headless tmux server, with nothing on any display. This is the backend for GPU servers and other machines without a GUI.
 
-Current release: `v1.0.0`. Repository: <https://github.com/identxxy/terminal-dock> (the old `kitty-remote-deck` URL redirects). Browser-storage keys, `KRD_*` environment variables and the `krd_` token prefix keep their pre-1.0 names so existing settings and device tokens carry over.
+Current release: `v1.0.1`. Repository: <https://github.com/identxxy/terminal-dock> (the old `kitty-remote-deck` URL redirects). Browser-storage keys, `KRD_*` environment variables and the `krd_` token prefix keep their pre-1.0 names so existing settings and device tokens carry over.
 
 ## What It Does
 
@@ -92,7 +92,7 @@ Edit the target in the Connect sidebar if your kitty binary or socket pattern di
 
 Set `Backend` to `tmux` for a host that runs tmux without a GUI, such as a headless GPU server. Transport works the same way: Local runs `tmux` on the server machine, SSH streams the helper to the target host. Leave `Socket Pattern` empty to discover live servers under `$TMUX_TMPDIR/tmux-UID/*` (stale socket files left by exited servers are skipped), or set it to a glob such as `/tmp/tmux-1000/*`. The Socket selector then switches between tmux servers (`tmux -L name` creates a separate socket per name).
 
-The Session Explorer keeps the same three-level layout with tmux names: tmux sessions appear as the top level, tmux windows as the middle level, and panes as the selectable items. The explorer offers `New Session` (a detached session started in the target user's home directory) for tmux targets; windows and splits are arranged from the terminal as usual, although the create API still supports `tab` and `split` kinds for tmux.
+The Session Explorer lists tmux panes as a flat set of cards (title and `#id`, working directory shortened in the middle, process and badges); the session and window levels are not drawn, although the status bar still names them for the selected pane. The explorer offers `New Session` (a detached session started in the target user's home directory) for tmux targets; windows and splits are arranged from the terminal as usual, although the create API still supports `tab` and `split` kinds for tmux.
 
 Differences from kitty targets:
 

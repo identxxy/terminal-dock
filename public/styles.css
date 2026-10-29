@@ -2275,6 +2275,53 @@ textarea::-webkit-scrollbar-thumb:hover {
   word-break: break-word;
 }
 
+/* The head of the path shrinks and ellipsizes; the last segment stays whole. */
+.pane-cwd {
+  display: flex;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.pane-cwd-head {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pane-cwd-tail {
+  flex: 0 0 auto;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge-row {
+  align-items: center;
+}
+
+.badge-list {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+/* tmux: one flat card per pane, no session or window blocks around it. */
+.pane-cards {
+  padding: 0;
+}
+
+.pane-cards .pane-item {
+  border-color: var(--line);
+  background: rgba(127, 127, 127, 0.04);
+}
+
+.pane-cards .pane-item.selected {
+  border-color: var(--accent);
+  background: var(--active-bg);
+}
+
 .mini-badge {
   display: inline-flex;
   align-items: center;

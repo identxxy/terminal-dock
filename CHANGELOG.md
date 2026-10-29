@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.1
+
+- tmux session explorer: one flat card per pane instead of session and window blocks. Each card shows the pane title with its `#id`, the working directory shortened in the middle so the last segment stays visible, and the process beside the badges (`active`, `cached`, `alt-screen`, ...). kitty keeps its OS window / tab / pane structure with the same card.
+
 ## v1.0.0 - Terminal Dock
 
 - The repository is now `github.com/identxxy/terminal-dock` (renamed from `kitty-remote-deck`; the old URL redirects). Browser-storage keys, the `kitty-remote-deck-browser` frame message source, `KRD_*` environment variables, the `krd_` token prefix and the session cookie keep their names, so saved settings and device sign-ins carry over.
