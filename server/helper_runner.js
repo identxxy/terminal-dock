@@ -35,7 +35,7 @@ function createCommandPayload(target, payload) {
   };
 }
 
-function createKittyInvocation(target, action, payload, helperSource) {
+function createHelperInvocation(target, action, payload, helperSource) {
   const transport = normalizeTransport(target.transport);
   const commandPayload = createCommandPayload(target, payload);
   const encodedPayload = Buffer.from(JSON.stringify(commandPayload), "utf8").toString("base64");
@@ -45,7 +45,7 @@ function createKittyInvocation(target, action, payload, helperSource) {
       command: "python3",
       args: ["-", action, encodedPayload],
       stdin: helperSource,
-      label: "local kitty helper"
+      label: "local helper"
     };
   }
 
@@ -124,8 +124,8 @@ function runInvocation(invocation, options = {}) {
   });
 }
 
-async function runKittyAction(target, action, payload, options = {}) {
-  const invocation = createKittyInvocation(target, action, payload, options.helperSource || "");
+async function runHelperAction(target, action, payload, options = {}) {
+  const invocation = createHelperInvocation(target, action, payload, options.helperSource || "");
   const { stdout } = await runInvocation(invocation, options);
 
   let parsed;
@@ -137,16 +137,16 @@ async function runKittyAction(target, action, payload, options = {}) {
   }
 
   if (!parsed.ok) {
-    throw new Error(parsed.error || "Kitty action failed.");
+    throw new Error(parsed.error || "Helper action failed.");
   }
 
   return parsed.data;
 }
 
 module.exports = {
-  createKittyInvocation,
+  createHelperInvocation,
   normalizeBackend,
   normalizeTransport,
-  runKittyAction,
+  runHelperAction,
   runInvocation
 };

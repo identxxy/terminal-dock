@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.1.0
+
+- Server split into modules: `server/app.js` (`createApp`, testable without Python), a route table in `server/routes/*.js`, and `targets.js`, `screen_cache.js`, `preview_access.js`, `browser_resources.js`, `events.js`, `static_files.js`, `http_utils.js`; `kitty_runner.js` is now `helper_runner.js`. `tests/api.test.mjs` exercises the HTTP API with a stub helper; the pure modules have their own tests.
+- Client split into `public/app/*.js`, one file per domain with its own `bind<Domain>Events()`; `app.js` is gone. The source guard test now checks all files for duplicate names and `index.html` for load order.
+- `remote_helper.py` registers backends in an explicit `BACKENDS` table with `SHARED_ACTIONS` separate.
+- Removed dead code: `focusWindow`, the pre-1.0 bottom-panel default migration, 13 unused CSS classes. The client build id now comes from the `?v=` cache key.
+- `AGENTS.md` carries an architecture map and the extension points.
+
 ## v1.0.1
 
 - tmux session explorer: one flat card per pane instead of session and window blocks. Each card shows the pane title with its `#id`, the working directory shortened in the middle so the last segment stays visible, and the process beside the badges (`active`, `cached`, `alt-screen`, ...). kitty keeps its OS window / tab / pane structure with the same card.

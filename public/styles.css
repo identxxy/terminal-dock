@@ -366,11 +366,7 @@ button {
 .brand-block,
 .topbar-controls,
 .topbar-actions,
-.inline-tools,
-.button-row,
-.console-actions,
-.status-group,
-.panel-mini-actions {
+.status-group {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -623,11 +619,6 @@ button {
   stroke-linejoin: round;
 }
 
-.activity-text-icon {
-  font-size: 0.74rem;
-  font-weight: 800;
-}
-
 .activity-item:hover {
   background: var(--hover-bg);
   color: var(--text);
@@ -806,8 +797,7 @@ button {
 }
 
 .sidebar-head,
-.editor-toolbar,
-.panel-head {
+.editor-toolbar {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -842,8 +832,7 @@ button {
   opacity: 0.5;
 }
 
-.sidebar-head h2,
-.panel-head h2 {
+.sidebar-head h2 {
   margin: 0;
   color: var(--text-strong);
   font-size: 0.96rem;
@@ -925,33 +914,11 @@ button {
   display: none;
 }
 
-.mobile-workbench-controls {
-  display: none;
-}
-
 .mobile-back-button,
 .mobile-connect-button,
 .mobile-width-button,
 .mobile-browser-back-button {
   display: none;
-}
-
-.mobile-control-button {
-  min-height: 30px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 0 9px;
-  background: color-mix(in srgb, var(--field-bg), transparent 8%);
-  color: var(--text);
-  font-size: 0.78rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.mobile-control-button.active {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent), var(--active-bg) 74%);
-  color: var(--text-strong);
 }
 
 .editor-pane {
@@ -1067,12 +1034,6 @@ button {
 .editor-menu-item {
   justify-content: flex-start;
   min-height: 32px;
-}
-
-.compact-editor-button {
-  min-height: 30px;
-  padding: 5px 9px;
-  white-space: nowrap;
 }
 
 .screen-output {
@@ -1796,9 +1757,7 @@ button {
 }
 
 .compact-select,
-.target-form label,
-.compact-label,
-.compact-inline-field {
+.target-form label {
   display: grid;
   gap: 4px;
 }
@@ -1873,19 +1832,9 @@ button {
 }
 
 .compact-select span,
-.target-form label > span,
-.compact-label span,
-.compact-inline-field span {
+.target-form label > span {
   color: var(--muted);
   font-size: 0.75rem;
-}
-
-.compact-inline-field {
-  min-width: 88px;
-}
-
-.compact-inline-field select {
-  min-width: 88px;
 }
 
 input,
@@ -2114,10 +2063,6 @@ textarea:disabled {
 
 .sidebar-sticky-actions .secondary-button {
   width: 100%;
-}
-
-.full-span {
-  grid-column: 1 / -1;
 }
 
 .scroll-panel {
@@ -2350,14 +2295,6 @@ textarea::-webkit-scrollbar-thumb:hover {
 .toggle input {
   width: auto;
   accent-color: var(--accent);
-}
-
-.compact-toggle {
-  min-height: 30px;
-  padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--field-bg);
 }
 
 .sr-only {
@@ -2636,7 +2573,6 @@ textarea::-webkit-scrollbar-thumb:hover {
   }
 
   .editor-tools > .toggle,
-  .compact-editor-button,
   .editor-split-button {
     display: none;
   }
@@ -2649,15 +2585,6 @@ textarea::-webkit-scrollbar-thumb:hover {
     min-width: 42px;
     min-height: 30px;
     padding: 0 6px;
-  }
-
-  .compact-inline-field {
-    min-width: 70px;
-  }
-
-  .compact-inline-field span,
-  .compact-toggle span {
-    display: none;
   }
 
   .screen-output {

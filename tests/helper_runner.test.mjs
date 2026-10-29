@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import runner from "../server/kitty_runner.js";
+import runner from "../server/helper_runner.js";
 
 const {
-  createKittyInvocation,
+  createHelperInvocation,
   normalizeTransport
 } = runner;
 
@@ -17,7 +17,7 @@ test("transport defaults to local and preserves explicit ssh", () => {
 });
 
 test("local invocation runs the helper directly without ssh", () => {
-  const invocation = createKittyInvocation(
+  const invocation = createHelperInvocation(
     {
       transport: "local",
       kittyBinary: "/usr/bin/kitty",
@@ -37,7 +37,7 @@ test("local invocation runs the helper directly without ssh", () => {
 });
 
 test("ssh invocation keeps the existing ssh helper path", () => {
-  const invocation = createKittyInvocation(
+  const invocation = createHelperInvocation(
     {
       transport: "ssh",
       sshTarget: "example-host",
@@ -64,7 +64,7 @@ test("backend defaults to kitty and accepts tmux", () => {
 });
 
 test("invocation payload carries the backend and tmux binary", () => {
-  const invocation = createKittyInvocation(
+  const invocation = createHelperInvocation(
     {
       transport: "local",
       backend: "tmux",
@@ -101,7 +101,7 @@ test("helper output split inside a multibyte character decodes intact", async ()
     });
     return child;
   };
-  const data = await runner.runKittyAction(
+  const data = await runner.runHelperAction(
     { transport: "local", kittyBinary: "kitty", socketPattern: "/tmp/kitty.sock-*", defaultSocket: "" },
     "get_screen",
     { socket: "" },

@@ -5,7 +5,7 @@ A local web app that drives terminals from a browser: an iPad, a phone or anothe
 - `kitty`: the terminal is a GUI kitty window, so everything the browser does is also visible on that machine's physical display.
 - `tmux`: a headless tmux server, with nothing on any display. This is the backend for GPU servers and other machines without a GUI.
 
-Current release: `v1.0.1`. Repository: <https://github.com/identxxy/terminal-dock> (the old `kitty-remote-deck` URL redirects). Browser-storage keys, `KRD_*` environment variables and the `krd_` token prefix keep their pre-1.0 names so existing settings and device tokens carry over.
+Current release: `v1.1.0`. Repository: <https://github.com/identxxy/terminal-dock> (the old `kitty-remote-deck` URL redirects). Browser-storage keys, `KRD_*` environment variables and the `krd_` token prefix keep their pre-1.0 names so existing settings and device tokens carry over.
 
 ## What It Does
 
@@ -149,14 +149,13 @@ Differences from kitty targets:
 - Themes: Dark, Graphite, Nord, Catppuccin Mocha, Tokyo Night, Gruvbox, Rosé Pine, Light, Catppuccin Latte, Solarized Light, chosen from the top bar and remembered per browser.
 - Top controls: numeric font size, theme, and the layout lock (padlock button). Locked by default; unlocking shows drag lines on the sidebar's right edge (220–520px) and the bottom panel's top edge. Dragging the panel edge pins the composer to that height (80–420px); double-click the edge to let it grow with the text again. The handles overlay the edges, so toggling the lock never moves the terminal. The Browser drawer's left edge is always draggable on desktop, pinned or floating, from 320px up to 70% of the window while the terminal keeps at least 180px.
 
-## Frontend Structure
+## Code Structure
 
-- `public/app.js`: stateful app orchestration, event wiring, session control, and API calls.
-- `public/modules/browser-utils.js`: URL normalization, Browser proxy URL creation, HTML escaping, and terminal URL linkification.
-- `public/modules/mobile-utils.js`: mobile viewport and browser-history helpers.
-- `public/modules/preview-history.js`: pure Browser URL stack operations for root, back, forward, and jump behavior.
-- `public/modules/composer-utils.js`: pure composer Enter-key submit decisions and special-key menu definitions.
-- `server/image_upload.js`: target-side image upload helpers and Markdown image-reference formatting.
+`AGENTS.md` has the full map. In short:
+
+- `server.js` starts `server/app.js`; routes live in `server/routes/*.js` as a table of `{ method, path, auth, handler }`, with stores, the helper runner, the tmux watchers and the Browser proxy as separate modules under `server/`.
+- `server/remote_helper.py` is the single-file Python helper streamed to each target; backends are action tables registered in `BACKENDS`.
+- `public/app/*.js` is the client, one file per domain sharing a global scope (`core.js` first, `main.js` last); `public/modules/*.js` are pure helpers used by both the page and the tests.
 
 ## Embedded Browser Proxy
 
@@ -178,12 +177,12 @@ Useful local checks:
 
 ```bash
 npm test
-node --check server.js
-node --check public/app.js
-node --check scripts/auth-admin.js
-python -m py_compile server/remote_helper.py
+for f in server.js server/*.js server/routes/*.js public/app/*.js scripts/auth-admin.js; do node --check "$f"; done
+python3 -m py_compile server/remote_helper.py
 curl http://localhost:3040/api/health
 ```
+
+`npm test` includes `tests/api.test.mjs`, which starts the real HTTP server on a temporary data directory with the Python helper replaced by a stub.
 
 The same Python helper serves both backends; the `backend` field of the target selects the kitty or tmux action set.
 

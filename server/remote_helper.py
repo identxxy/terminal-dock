@@ -1223,10 +1223,17 @@ TMUX_ACTIONS = {
 }
 
 
-ACTIONS = {
-    "test": action_test,
+# Backend registry. SHARED_ACTIONS work on any host; a backend adds its own
+# action table under its name, selected by PAYLOAD["backend"]. A new backend
+# (zellij, screen, a plain PTY) is one more table here with the same action
+# names and result shapes as tmux.
+SHARED_ACTIONS = {
     "fetch_url": action_fetch_url,
     "fetch_url_resource": action_fetch_url_resource,
+}
+
+KITTY_ACTIONS = {
+    "test": action_test,
     "list_sessions": action_list_sessions,
     "get_screen": action_get_screen,
     "scroll_window": action_scroll_window,
@@ -1237,13 +1244,17 @@ ACTIONS = {
     "close_panel": action_close_panel,
 }
 
+BACKENDS = {
+    "kitty": KITTY_ACTIONS,
+    "tmux": TMUX_ACTIONS,
+}
 
-if BACKEND not in ("kitty", "tmux"):
+
+if BACKEND not in BACKENDS:
     respond(False, error=f"Unsupported backend: {BACKEND}")
     sys.exit(0)
 
-if BACKEND == "tmux":
-    ACTIONS = {**ACTIONS, **TMUX_ACTIONS}
+ACTIONS = {**SHARED_ACTIONS, **BACKENDS[BACKEND]}
 
 try:
     if ACTION not in ACTIONS:
