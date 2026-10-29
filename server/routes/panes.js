@@ -1,4 +1,5 @@
 const { normalizeBackend } = require("../helper_runner");
+const { backendSupports } = require("../backend_contract");
 const { hashText } = require("../response_encoding");
 const { handleEventStream } = require("../events");
 const { describeScreenDelta, scrollOffsetKey } = require("../screen_cache");
@@ -16,13 +17,15 @@ const {
 const HELPER_TIMEOUT_MS = 25000;
 
 // Most pane routes read a JSON body naming the target, socket and pane, run
-// one helper action and return its data unchanged.
-function paneAction(action, buildPayload, options = {}) {
+// one helper action and return its data unchanged. Actions a backend does not
+// implement (see server/backend_contract.js) are refused before spawning.
+function paneAction(action, buildPayload) {
   return async (ctx, request, response) => {
-    const body = await parseRequestBody(request, options.body);
+    const body = await parseRequestBody(request);
     const target = await ctx.targetStore.resolve(body);
-    if (options.tmuxOnly && normalizeBackend(target.backend) !== "tmux") {
-      throw new Error(options.tmuxOnly);
+    const backend = normalizeBackend(target.backend);
+    if (!backendSupports(action, backend)) {
+      throw new Error(`${action} is not supported by ${backend} targets.`);
     }
     const payload = { socket: body.socket || "", ...buildPayload(body) };
     sendJson(response, 200, await ctx.runHelper(target, action, payload, HELPER_TIMEOUT_MS));
@@ -167,9 +170,7 @@ module.exports = () => [
     method: "POST",
     path: "/api/toggle-zoom",
     auth: "session",
-    handler: paneAction("toggle_zoom", (body) => ({ windowId: parseWindowId(body.windowId) }), {
-      tmuxOnly: "Pane zoom is only supported for tmux targets."
-    })
+    handler: paneAction("toggle_zoom", (body) => ({ windowId: parseWindowId(body.windowId) }))
   },
   {
     method: "POST",
@@ -192,7 +193,7 @@ module.exports = () => [
       columns: parsePositiveInteger(body.columns, "columns"),
       rows: parsePositiveInteger(body.rows, "rows"),
       force: body.force === true
-    }), { tmuxOnly: "Pane resize is only supported for tmux targets." })
+    }))
   },
   {
     method: "POST",

@@ -17,7 +17,8 @@ function normalizeTransport(value) {
 function normalizeBackend(value) {
   const backend = String(value || "kitty").trim().toLowerCase();
 
-  if (backend === "kitty" || backend === "tmux") {
+  // "mock" is the contract reference backend in remote_helper.py: no terminal, canned answers.
+  if (backend === "kitty" || backend === "tmux" || backend === "mock") {
     return backend;
   }
 

@@ -6,6 +6,7 @@ import test from "node:test";
 
 import { createApp } from "../server/app.js";
 import { createDeviceToken } from "../server/auth.js";
+import { validateResult } from "../server/backend_contract.js";
 
 // The API over real HTTP with the Python helper replaced by a stub: routing,
 // auth gating, body validation and the screen delta protocol.
@@ -17,15 +18,25 @@ async function withApp(run) {
     dataDir: dir,
     tmpDir: path.join(dir, "tmp"),
     helperSource: "",
+    // The stub answers with contract-shaped results, checked on the way out so
+    // these tests cannot pass on data the real helper would never send.
     runHelper: async (target, action, payload) => {
       calls.push({ target: target.id, action, payload });
-      if (action === "get_screen") {
-        return { text: screenText, format: "ansi", scrollOffset: 0 };
+      const base = { socket: payload.socket || "", windowId: payload.windowId ?? 0 };
+      const replies = {
+        get_screen: { ...base, text: screenText, format: "ansi", scrollOffset: 0 },
+        scroll_window: { ...base, lines: payload.lines ?? 0, text: screenText, format: "ansi", scrollOffset: payload.lines > 0 ? 0 : 5 },
+        send_text: { ...base, sentLength: String(payload.text || "").length },
+        send_key: { ...base, key: payload.key, keys: payload.keys, repeat: payload.repeat },
+        focus_window: base,
+        toggle_zoom: { ...base, zoomed: true },
+        test: { host: "stub", user: "stub", socketPattern: "", sockets: [], selectedSocket: "", sessionCount: 0, windowCount: 0, checkedAt: "" }
+      };
+      const reply = replies[action] || { ok: true, action };
+      if (replies[action]) {
+        assert.deepEqual(validateResult(action, reply), [], `stub reply for ${action}`);
       }
-      if (action === "scroll_window") {
-        return { text: screenText, scrollOffset: payload.lines > 0 ? 0 : 5 };
-      }
-      return { ok: true, action };
+      return reply;
     }
   });
   const address = await app.listen();
@@ -75,7 +86,7 @@ test("pane routes validate their body and forward one helper action", async () =
 
     const zoom = await api("/api/toggle-zoom", { method: "POST", body: { targetId: "local", windowId: 0 } });
     assert.equal(zoom.status, 400);
-    assert.match((await zoom.json()).error, /only supported for tmux/);
+    assert.match((await zoom.json()).error, /toggle_zoom is not supported by kitty targets/);
   });
 });
 
@@ -119,4 +130,38 @@ test("targets can be saved, selected and listed", async () => {
     assert.equal(list.lastSelectedTargetId, saved.target.id);
     assert.equal(list.targets.length, 2);
   });
+});
+
+// No stub: the real Python helper with the mock backend, end to end over HTTP.
+test("a mock target round-trips sessions, screen and input through the real helper", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "krd-api-mock-"));
+  const app = await createApp({ dataDir: dir, tmpDir: path.join(dir, "tmp") });
+  const address = await app.listen();
+  const base = `http://127.0.0.1:${address.port}`;
+  try {
+    const { token } = await createDeviceToken(app.context.authManager, "mock");
+    const login = await fetch(`${base}/api/auth/login`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token })
+    });
+    const cookie = login.headers.get("set-cookie").split(";")[0];
+    const api = (route, init = {}) => fetch(`${base}${route}`, {
+      ...init, headers: { "Content-Type": "application/json", Cookie: cookie }, body: init.body === undefined ? undefined : JSON.stringify(init.body)
+    });
+    const saved = await (await api("/api/targets", { method: "POST", body: { id: "mock", name: "Mock", backend: "mock" } })).json();
+    assert.equal(saved.target.backend, "mock");
+    const sessions = await (await api("/api/sessions?targetId=mock")).json();
+    assert.equal(sessions.backend, "mock");
+    assert.equal(sessions.labels.osWindow, "Session");
+    const pane = sessions.tree[0].tabs[0].windows[0];
+    const screen = await (await api(`/api/screen?targetId=mock&windowId=${pane.id}&extent=all`)).json();
+    assert.match(screen.text, /mock pane %0.* line 39/);
+    assert.ok(screen.hash);
+    const sent = await (await api("/api/send-text", { method: "POST", body: { targetId: "mock", windowId: pane.id, text: "hi", appendNewline: true } })).json();
+    assert.equal(sent.sentLength, 2);
+    const resized = await (await api("/api/resize-window", { method: "POST", body: { targetId: "mock", windowId: pane.id, columns: 100, rows: 30 } })).json();
+    assert.equal(resized.columns, 100, "the contract says mock implements resize_window");
+  } finally {
+    await app.close();
+    await rm(dir, { recursive: true, force: true });
+  }
 });

@@ -37,7 +37,7 @@ function desiredLiveSubscriptions() {
   const subs = new Map();
   const add = (targetId, socket, windowId) => {
     const target = state.targets.find((item) => item.id === targetId);
-    if (!target || target.backend !== "tmux" || windowId === null || windowId === undefined) {
+    if (!target || !backendFeature("live", target.backend) || windowId === null || windowId === undefined) {
       return;
     }
     subs.set(paneLiveKey(targetId, socket, Number(windowId)), { targetId, socket: socket || "", windowId: Number(windowId) });

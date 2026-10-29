@@ -7,13 +7,14 @@ function normalizeTransport(value) {
 function getTargetConnectionLabel(target) {
   const transport = normalizeTransport(target?.transport);
   const base = transport === "ssh" ? target?.sshTarget || "SSH" : "Local";
-  return normalizeBackend(target?.backend) === "tmux" ? `${base} · tmux` : base;
+  const backend = normalizeBackend(target?.backend);
+  return backend === "kitty" ? base : `${base} · ${backend}`;
 }
 
 function syncTargetBackendFormState(options = {}) {
   const backend = normalizeBackend(elements.targetBackend.value);
   const defaults = getBackendDefaults(backend);
-  const previous = getBackendDefaults(backend === "tmux" ? "kitty" : "tmux");
+  const others = Object.values(BACKEND_DEFAULTS).filter((item) => item !== defaults);
   elements.targetKittyBinaryField.hidden = backend !== "kitty";
   elements.targetTmuxBinaryField.hidden = backend !== "tmux";
   elements.targetBackendSectionTitle.textContent = defaults.sectionTitle;
@@ -21,7 +22,7 @@ function syncTargetBackendFormState(options = {}) {
   elements.targetSocketPattern.placeholder = defaults.socketPlaceholder;
   elements.targetDefaultSocket.placeholder = defaults.defaultSocketPlaceholder;
   // Switching backends swaps an untouched socket pattern for the other default.
-  if (options.swapSocketPattern && elements.targetSocketPattern.value.trim() === previous.socketPattern) {
+  if (options.swapSocketPattern && others.some((item) => elements.targetSocketPattern.value.trim() === item.socketPattern)) {
     elements.targetSocketPattern.value = defaults.socketPattern;
   }
 }

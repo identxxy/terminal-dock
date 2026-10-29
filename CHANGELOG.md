@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.1.1
+
+- Backend protocol contract: `server/backend_contract.js` names every helper action's payload and result fields; `docs/backend-protocol.md` is generated from it (`node scripts/backend-protocol.mjs`) and a test keeps the two in sync. `remote_helper.py` gains a `mock` backend, the reference implementation, which `tests/backend_contract.test.mjs` drives through the real helper for every action; the API test's stub replies are validated against the contract too. `mock` is selectable as a target backend for UI work without a terminal.
+
 ## v1.1.0
 
 - Server split into modules: `server/app.js` (`createApp`, testable without Python), a route table in `server/routes/*.js`, and `targets.js`, `screen_cache.js`, `preview_access.js`, `browser_resources.js`, `events.js`, `static_files.js`, `http_utils.js`; `kitty_runner.js` is now `helper_runner.js`. `tests/api.test.mjs` exercises the HTTP API with a stub helper; the pure modules have their own tests.

@@ -112,8 +112,17 @@ const DEFAULT_TARGET_FORM = {
   notes: ""
 };
 
-// The session tree keeps kitty's shape for both backends; only the names differ.
-// tmux: session -> OS window, window -> tab, pane -> pane.
+// The session tree keeps kitty's shape for every backend; only the names differ.
+// tmux: session -> OS window, window -> tab, pane -> pane. `features` is what
+// the UI shows for a backend; which helper actions a backend implements is the
+// server's business (server/backend_contract.js). A new backend adds an entry
+// here and an <option> in index.html.
+const BACKEND_FEATURES = {
+  kitty: { flatPanes: false, nestedCreate: true, closeSession: false, closeVerb: "Close", paneResize: false, zoom: false, live: false },
+  tmux: { flatPanes: true, nestedCreate: false, closeSession: true, closeVerb: "Kill", paneResize: true, zoom: true, live: true },
+  mock: { flatPanes: true, nestedCreate: false, closeSession: true, closeVerb: "Kill", paneResize: true, zoom: true, live: false }
+};
+
 const BACKEND_DEFAULTS = {
   kitty: {
     socketPattern: "/tmp/kitty.sock-*",
@@ -136,6 +145,21 @@ const BACKEND_DEFAULTS = {
     defaultSocketPlaceholder: "/tmp/tmux-1000/default",
     sectionTitle: "tmux Server",
     sectionHint: "tmux -S",
+    labels: {
+      osWindow: "Session",
+      tab: "Window",
+      window: "Pane",
+      createWindow: "New Session",
+      createTab: "New Window",
+      createSplit: "New Split"
+    }
+  },
+  mock: {
+    socketPattern: "",
+    socketPlaceholder: "ignored",
+    defaultSocketPlaceholder: "ignored",
+    sectionTitle: "Mock Backend",
+    sectionHint: "canned data, no terminal",
     labels: {
       osWindow: "Session",
       tab: "Window",
@@ -494,7 +518,11 @@ function hasSelectedWindow() {
 }
 
 function normalizeBackend(value) {
-  return value === "tmux" ? "tmux" : "kitty";
+  return BACKEND_DEFAULTS[value] ? value : "kitty";
+}
+
+function backendFeature(name, backend = state.sessionBackend) {
+  return BACKEND_FEATURES[normalizeBackend(backend)][name];
 }
 
 function getBackendDefaults(backend) {

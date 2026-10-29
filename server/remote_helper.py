@@ -1223,6 +1223,242 @@ TMUX_ACTIONS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# mock backend
+#
+# The reference implementation of the backend contract (server/backend_contract.js):
+# no terminal, deterministic answers derived from the payload. It is what
+# tests/backend_contract.test.mjs runs, and a target with backend "mock" lets the
+# UI be driven without kitty or tmux. Each action is a fresh process, so the
+# mock has no state beyond what the payload carries.
+# ---------------------------------------------------------------------------
+
+MOCK_LABELS = {
+    "osWindow": "Session",
+    "tab": "Window",
+    "window": "Pane",
+    "createWindow": "New Session",
+    "createTab": "New Window",
+    "createSplit": "New Split",
+}
+MOCK_SOCKET = "/tmp/terminal-dock-mock"
+MOCK_LINES = 40
+MOCK_ROWS = 24
+MOCK_COLUMNS = 80
+
+
+def mock_socket():
+    return PAYLOAD.get("socket") or MOCK_SOCKET
+
+
+def mock_window_id():
+    return int(PAYLOAD["windowId"])
+
+
+def mock_pane(pane_id, title, cwd, active=True, command="bash"):
+    return {
+        "id": pane_id,
+        "index": 0,
+        "title": title,
+        "cwd": cwd,
+        "pid": 1000 + pane_id,
+        "is_active": active,
+        "is_focused": active,
+        "is_attached": False,
+        "alternate_on": False,
+        "zoomed": False,
+        "pane_count": 1,
+        "columns": MOCK_COLUMNS,
+        "lines": MOCK_ROWS,
+        "window_columns": MOCK_COLUMNS,
+        "window_lines": MOCK_ROWS,
+        "cmdline": [command],
+        "foreground_processes": [{"cmdline": [command]}],
+    }
+
+
+def mock_tree():
+    return [
+        {
+            "id": 0,
+            "title": "mock",
+            "is_focused": False,
+            "tabs": [
+                {
+                    "id": 0,
+                    "index": 0,
+                    "title": "agent",
+                    "is_focused": True,
+                    "layout": "",
+                    "columns": MOCK_COLUMNS,
+                    "lines": MOCK_ROWS,
+                    "zoomed": False,
+                    "windows": [mock_pane(0, "\u2733 mock agent", os.path.expanduser("~"), command="claude")],
+                },
+                {
+                    "id": 1,
+                    "index": 1,
+                    "title": "shell",
+                    "is_focused": False,
+                    "layout": "2 panes",
+                    "columns": MOCK_COLUMNS,
+                    "lines": MOCK_ROWS,
+                    "zoomed": False,
+                    "windows": [
+                        mock_pane(1, "shell", "/tmp", active=True),
+                        mock_pane(2, "logs", "/var/log", active=False, command="tail"),
+                    ],
+                },
+            ],
+        }
+    ]
+
+
+def mock_text(window_id, extent, offset=0):
+    lines = [f"\x1b[32mmock pane %{window_id}\x1b[0m line {index}" for index in range(MOCK_LINES)]
+    if extent == "all":
+        return "\n".join(lines)
+    end = MOCK_LINES - offset
+    return "\n".join(lines[max(0, end - MOCK_ROWS):end])
+
+
+def mock_action_test():
+    tree = mock_tree()
+    return {
+        "host": "mock-host",
+        "user": "mock",
+        "backend": "mock",
+        "socketPattern": SOCKET_PATTERN,
+        "sockets": [MOCK_SOCKET],
+        "selectedSocket": mock_socket(),
+        "sessionCount": len(tree),
+        "windowCount": count_windows(tree),
+        "labels": MOCK_LABELS,
+        "checkedAt": utc_now(),
+    }
+
+
+def mock_action_list_sessions():
+    return {
+        "backend": "mock",
+        "labels": MOCK_LABELS,
+        "sockets": [MOCK_SOCKET],
+        "selectedSocket": mock_socket(),
+        "tree": mock_tree(),
+        "discoveredAt": utc_now(),
+    }
+
+
+def mock_action_get_screen():
+    window_id = mock_window_id()
+    extent = PAYLOAD.get("extent") or "screen"
+    offset = max(0, min(int(PAYLOAD.get("scrollOffset") or 0), MOCK_LINES - MOCK_ROWS))
+    result = {"socket": mock_socket(), "windowId": window_id, "text": mock_text(window_id, extent, offset), "format": "ansi", "scrollOffset": offset}
+    if extent == "screen":
+        half = MOCK_COLUMNS // 2
+        result["window"] = {"columns": MOCK_COLUMNS, "rows": MOCK_ROWS, "zoomed": False}
+        result["panes"] = [
+            {"id": window_id, "left": 0, "top": 0, "columns": half, "rows": MOCK_ROWS, "active": True, "alternate_on": False, "title": "mock", "text": result["text"]},
+            {"id": window_id + 100, "left": half + 1, "top": 0, "columns": MOCK_COLUMNS - half - 1, "rows": MOCK_ROWS, "active": False, "alternate_on": False, "title": "other", "text": mock_text(window_id + 100, "screen")},
+        ]
+    return result
+
+
+def mock_action_scroll_window():
+    window_id = mock_window_id()
+    lines = int(PAYLOAD.get("lines") or 0)
+    offset = 0 if PAYLOAD.get("toEnd") else max(0, min(int(PAYLOAD.get("scrollOffset") or 0) - lines, MOCK_LINES - MOCK_ROWS))
+    return {"socket": mock_socket(), "windowId": window_id, "lines": lines, "text": mock_text(window_id, "screen", offset), "format": "ansi", "scrollOffset": offset}
+
+
+def mock_action_send_text():
+    return {"socket": mock_socket(), "windowId": mock_window_id(), "sentLength": len(PAYLOAD.get("text") or "")}
+
+
+def mock_action_send_key():
+    keys = key_sequence()
+    return {"socket": mock_socket(), "windowId": mock_window_id(), "key": keys[0], "keys": keys, "repeat": len(keys)}
+
+
+def mock_action_focus_window():
+    return {"socket": mock_socket(), "windowId": mock_window_id()}
+
+
+def mock_action_create_panel():
+    kind = (PAYLOAD.get("kind") or "window").strip().lower()
+    if kind not in ("window", "tab", "split"):
+        raise RuntimeError("kind must be one of: window, tab, split.")
+    result = {"socket": mock_socket(), "kind": kind, "windowId": 9}
+    if kind != "window":
+        source = optional_positive_int("sourceWindowId")
+        if source is None:
+            raise RuntimeError("sourceWindowId is required.")
+        result["sourceWindowId"] = source
+    if kind == "split":
+        tab_id = optional_positive_int("tabId")
+        if tab_id is None:
+            raise RuntimeError("tabId is required.")
+        result["tabId"] = tab_id
+    return result
+
+
+def mock_action_close_panel():
+    kind = (PAYLOAD.get("kind") or "pane").strip().lower()
+    if kind not in ("session", "tab", "pane"):
+        raise RuntimeError(f"Unsupported close kind: {kind}")
+    return {"socket": mock_socket(), "kind": kind, "id": int(PAYLOAD["id"])}
+
+
+def mock_action_describe_window():
+    window_id = mock_window_id()
+    return {
+        "socket": mock_socket(),
+        "windowId": window_id,
+        "sessionId": "$0",
+        "sessionName": "mock",
+        "tmuxWindowId": "@0",
+        "paneId": f"%{window_id}",
+        "tmuxBinary": "mock",
+    }
+
+
+def mock_action_resize_window():
+    columns = max(20, min(int(PAYLOAD.get("columns") or 0), 500))
+    rows = max(5, min(int(PAYLOAD.get("rows") or 0), 300))
+    return {
+        "socket": mock_socket(),
+        "windowId": mock_window_id(),
+        "attached": False,
+        "columns": columns,
+        "rows": rows,
+        "requestedColumns": columns,
+        "requestedRows": rows,
+        "zoomed": False,
+        "paneCount": 1,
+        "manualSize": False,
+    }
+
+
+def mock_action_toggle_zoom():
+    return {"socket": mock_socket(), "windowId": mock_window_id(), "zoomed": True}
+
+
+MOCK_ACTIONS = {
+    "test": mock_action_test,
+    "list_sessions": mock_action_list_sessions,
+    "get_screen": mock_action_get_screen,
+    "scroll_window": mock_action_scroll_window,
+    "send_text": mock_action_send_text,
+    "send_key": mock_action_send_key,
+    "focus_window": mock_action_focus_window,
+    "create_panel": mock_action_create_panel,
+    "close_panel": mock_action_close_panel,
+    "describe_window": mock_action_describe_window,
+    "resize_window": mock_action_resize_window,
+    "toggle_zoom": mock_action_toggle_zoom,
+}
+
+
 # Backend registry. SHARED_ACTIONS work on any host; a backend adds its own
 # action table under its name, selected by PAYLOAD["backend"]. A new backend
 # (zellij, screen, a plain PTY) is one more table here with the same action
@@ -1247,6 +1483,7 @@ KITTY_ACTIONS = {
 BACKENDS = {
     "kitty": KITTY_ACTIONS,
     "tmux": TMUX_ACTIONS,
+    "mock": MOCK_ACTIONS,
 }
 
 

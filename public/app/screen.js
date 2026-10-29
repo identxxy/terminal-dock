@@ -341,7 +341,7 @@ function scheduleExternalFit() {
 
 function selectedWindowFitsView() {
   const pane = state.flatWindows.find((window) => Number(window.id) === Number(state.selectedWindowId));
-  const cells = pane && state.sessionBackend === "tmux" ? measureScreenCells() : null;
+  const cells = pane && backendFeature("paneResize") ? measureScreenCells() : null;
   if (!cells) {
     return true;
   }
@@ -366,9 +366,9 @@ async function fitPaneToScreen(options = {}) {
   if (!state.selectedTargetId || !hasSelectedWindow()) {
     return null;
   }
-  if (state.sessionBackend !== "tmux") {
+  if (!backendFeature("paneResize")) {
     if (options.force) {
-      setStatus("Pane resize is only available for tmux targets.", "warning");
+      setStatus(`Pane resize is not available for ${state.sessionBackend} targets.`, "warning");
     }
     return null;
   }
@@ -685,8 +685,8 @@ function bindScreenEvents() {
 
   elements.zoomPaneBtn.addEventListener("click", async () => {
     closeEditorMenu();
-    if (!state.selectedTargetId || !hasSelectedWindow() || state.sessionBackend !== "tmux") {
-      setStatus("Pane zoom is only available for tmux targets.", "warning");
+    if (!state.selectedTargetId || !hasSelectedWindow() || !backendFeature("zoom")) {
+      setStatus(`Pane zoom is not available for ${state.sessionBackend} targets.`, "warning");
       return;
     }
     try {

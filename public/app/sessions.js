@@ -220,7 +220,7 @@ function renderSessions() {
   const selectedTarget = getSelectedTarget();
   const labels = state.sessionLabels;
   // tmux sessions are created and arranged from the terminal; the deck only adds sessions.
-  const showNestedCreate = state.sessionBackend !== "tmux";
+  const showNestedCreate = backendFeature("nestedCreate");
   const newWindowFooter = `
     <section class="os-window-create-block">
       <button
@@ -251,7 +251,7 @@ function renderSessions() {
 
   // tmux panes are listed flat: the session and window levels carry no
   // information the pane card does not already show.
-  const markup = state.sessionBackend === "tmux"
+  const markup = backendFeature("flatPanes")
     ? `<section class="pane-grid pane-cards">${state.flatWindows.map((window) => paneCardMarkup(window)).join("")}</section>`
     : state.sessionTree
     .map((osWindow) => {
@@ -300,7 +300,7 @@ function renderSessions() {
             </div>
             <div class="session-head-actions">
               <span>${(osWindow.tabs || []).length} ${escapeHtml(labels.tab.toLowerCase())}s</span>
-              ${state.sessionBackend === "tmux"
+              ${backendFeature("closeSession")
                 ? closeButtonMarkup("session", osWindow.id, osWindow.title || `#${osWindow.id}`, countOsWindowPanes(osWindow))
                 : ""}
               ${showNestedCreate ? `<button
@@ -403,7 +403,7 @@ async function handleSessionCloseClick(event) {
   const labels = state.sessionLabels;
   const kindLabel = { session: labels.osWindow, tab: labels.tab, pane: "pane" }[kind] || kind;
   const panes = Number(control.dataset.closePanes) || 1;
-  const verb = state.sessionBackend === "tmux" ? "Kill" : "Close";
+  const verb = backendFeature("closeVerb");
   const question =
     `${verb} ${kindLabel.toLowerCase()} "${control.dataset.closeTitle}"?` +
     (panes > 1 ? ` ${panes} panes and their processes will be closed.` : " Its process will be closed.");

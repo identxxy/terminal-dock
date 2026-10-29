@@ -38,7 +38,7 @@ One Node process, no build step, no runtime dependencies. Three layers:
 
 Extension points, in the order they are likely to be needed:
 
-- **New terminal backend**: a new action table in `remote_helper.py` registered in `BACKENDS`, `normalizeBackend()` in `server/helper_runner.js`, `BACKEND_DEFAULTS` in `app/core.js` (labels, socket placeholders). Live updates (`/api/events`) are tmux-only; other backends poll.
+- **New terminal backend**: the contract is `server/backend_contract.js` (rendered as `docs/backend-protocol.md`); `mock` in `remote_helper.py` is the reference implementation and `tests/backend_contract.test.mjs` runs every action against it. A backend is a new action table in `remote_helper.py` registered in `BACKENDS`, plus `normalizeBackend()` in `server/helper_runner.js`, the backend `<option>` in `index.html` and `BACKEND_DEFAULTS` in `app/core.js` (labels, socket placeholders). Live updates (`/api/events`) are tmux-only; other backends poll. Run the contract test against the new table before anything else.
 - **New API endpoint**: one route object in `server/routes/*.js`; the context gives it `targetStore`, `runHelper`, the stores and caches. Cover it in `tests/api.test.mjs` with the stub helper.
 - **New sidebar view or page section**: markup in `index.html`, a `show<View>Btn` in the activity bar, the view name in `SIDEBAR_VIEW_SET`/`MOBILE_SCREEN_SET`, rendering in a new `app/<view>.js` with its own `bind<View>Events()` called from `attachEvents()` in `app/main.js`, and a `<script>` tag after `core.js`.
 - **Terminal text rendering**: `modules/ansi-utils.js` (SGR to spans) and `modules/terminal-lines.js` (one block per line, incremental redraw); `renderTerminalText()` in `app/screen.js` is the hook between them and the output element.
@@ -50,7 +50,7 @@ Conventions that matter:
 - Browser-storage keys, the `KRD_*` environment variables, the `krd_` token prefix and the `kitty-remote-deck-browser` postMessage source keep their pre-1.0 names on purpose; renaming them signs every device out.
 - `index.html` cache keys (`?v=`) must change whenever a script or stylesheet changes, or phones keep the old file.
 - `data/` is gitignored and holds secrets (token hashes). Never copy it into scratch environments; create scratch tokens with `scripts/auth-admin.js` against a scratch `KRD_AUTH_FILE`.
-- Never send keys into a pane you do not own; UI checks run against a throwaway tmux session (`scripts/ui-smoke.mjs`, `DECK_SESSION`).
+- Never send keys into a pane you do not own; UI checks run against a throwaway tmux session (`scripts/ui-smoke.mjs`, `DECK_SESSION`) or against a `mock` target (`DECK_TARGET=mock DECK_SESSION=mock`), which needs no terminal at all.
 
 ## Expected workflow
 

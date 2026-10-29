@@ -5,7 +5,7 @@ A local web app that drives terminals from a browser: an iPad, a phone or anothe
 - `kitty`: the terminal is a GUI kitty window, so everything the browser does is also visible on that machine's physical display.
 - `tmux`: a headless tmux server, with nothing on any display. This is the backend for GPU servers and other machines without a GUI.
 
-Current release: `v1.1.0`. Repository: <https://github.com/identxxy/terminal-dock> (the old `kitty-remote-deck` URL redirects). Browser-storage keys, `KRD_*` environment variables and the `krd_` token prefix keep their pre-1.0 names so existing settings and device tokens carry over.
+Current release: `v1.1.1`. Repository: <https://github.com/identxxy/terminal-dock> (the old `kitty-remote-deck` URL redirects). Browser-storage keys, `KRD_*` environment variables and the `krd_` token prefix keep their pre-1.0 names so existing settings and device tokens carry over.
 
 ## What It Does
 
@@ -87,6 +87,8 @@ socket pattern: /tmp/kitty.sock-*
 ```
 
 Edit the target in the Connect sidebar if your kitty binary or socket pattern differs. Use `transport: SSH` only when the kitty session lives on another host.
+
+A third backend, `mock`, needs no terminal: it answers every action with canned data and exists to exercise the UI and the backend contract (`docs/backend-protocol.md`, generated from `server/backend_contract.js`). Pick it in the target form to try the deck on a machine without kitty or tmux.
 
 ### tmux Targets
 
@@ -201,7 +203,7 @@ tmux new-session -d -s krdsmoke
 DECK_URL=http://127.0.0.1:3041 DECK_TOKEN=krd_... npm run smoke:ui
 ```
 
-`CDP_URL=http://127.0.0.1:9333` uses a Chrome that is already running (for example one on another host behind an SSH tunnel) instead of starting one; `DECK_TARGET`, `DECK_SESSION` and `DECK_FIXTURE` (an HTML file on the target, default `tests/fixtures/smoke-report.html`) adjust the rest.
+`CDP_URL=http://127.0.0.1:9333` uses a Chrome that is already running (for example one on another host behind an SSH tunnel) instead of starting one; `DECK_TARGET`, `DECK_SESSION` and `DECK_FIXTURE` (an HTML file on the target, default `tests/fixtures/smoke-report.html`) adjust the rest. With a saved `mock` target, `DECK_TARGET=mock DECK_SESSION=mock` runs the same checks without any terminal.
 
 ## Versioning
 
