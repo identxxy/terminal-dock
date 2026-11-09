@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.1.2
+
+- Right sidebar with a Browser tab and a History tab. The Browser list (Reports) moved there from the left sidebar; the activity bar's globe now toggles it. History lists the text sent to the selected pane, stored on the server per pane (`data/input-history.json`, `GET/POST /api/input-history`, `POST /api/input-history/delete`; 32 entries per pane, each with its time and the transcript line it was sent at) so every device sees the same list. Tapping an entry jumps to the line where the prompt was echoed (falling back to the stored line) and flashes it; the entry whose output is on screen is marked, and in Screen mode a tap first switches to Transcript. The toolbar button beside the split buttons toggles the History tab; the sidebar's edge resizes with the layout unlocked. On a phone the sidebar is the Reports screen, so History is available there too and a tap returns to the terminal at that line.
+- Browser: a download button in the drawer head saves the page in the address bar as the target serves it. `GET /api/url-resource?...&download=1` answers with the original bytes (no proxy rewriting, no bridge script) and an attachment disposition named after the URL's last path segment.
+- Session cards can be dragged to reorder them (mouse: drag; touch: hold, then drag). The order is kept per target in this browser; the terminal's pane order is untouched.
+- Live keys: the `Live` toggle above the composer sends every keystroke to the pane as it happens (vim, pagers, menus, agent prompts) instead of collecting text; keys queue in order and leave in batches, and text the browser inserts anyway (IME, soft keyboards, paste) goes as text. kitty targets now type printable characters through `send-text` because `send-key` drops Shift in the legacy keyboard mode; tmux targets keep letter case and accept `;`.
+
 ## v1.1.1
 
 - Backend protocol contract: `server/backend_contract.js` names every helper action's payload and result fields; `docs/backend-protocol.md` is generated from it (`node scripts/backend-protocol.mjs`) and a test keeps the two in sync. `remote_helper.py` gains a `mock` backend, the reference implementation, which `tests/backend_contract.test.mjs` drives through the real helper for every action; the API test's stub replies are validated against the contract too. `mock` is selectable as a target backend for UI work without a terminal.

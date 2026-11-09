@@ -10,7 +10,7 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="/styles.css?v=1.1.0" />
+    <link rel="stylesheet" href="/styles.css?v=1.1.3" />
   </head>
   <body>
     <div class="app-shell" id="appShell">
@@ -18,7 +18,7 @@
         <div class="brand-block">
           <img class="brand-mark" src="/icon.svg" alt="" width="28" height="28" />
           <div>
-            <p class="eyebrow">Terminal Dock · v1.1.1</p>
+            <p class="eyebrow">Terminal Dock · v1.1.2</p>
             <h1>Remote Terminal Workbench</h1>
           </div>
         </div>
@@ -163,31 +163,6 @@
             <div class="layout-list scroll-panel" id="layoutList"></div>
           </section>
 
-          <section class="sidebar-view" id="browserSidebarView" hidden>
-            <div class="sidebar-head">
-              <button class="mobile-back-button" id="mobileBackFromBrowserListBtn" type="button">‹ Back</button>
-              <div>
-                <p class="section-kicker">Browser</p>
-                <h2>Reports</h2>
-              </div>
-              <div class="sidebar-head-actions">
-                <button class="icon-button" id="reloadReportsBtn" type="button" aria-label="Reload reports">↻</button>
-              </div>
-            </div>
-
-            <form class="layout-save-form" id="reportOpenForm">
-              <label class="composer-field">
-                <span class="sr-only">Path or URL</span>
-                <input id="reportUrlInput" type="text" placeholder="/path/to/report.html, a directory, or https://…" autocomplete="off" spellcheck="false" />
-              </label>
-              <button class="secondary-button" type="submit">Open</button>
-            </form>
-
-            <div class="status-panel subtle" id="reportSummary">Pages opened in the Browser are listed here on every device. Paths are read through the selected target; a directory opens a file listing.</div>
-
-            <div class="layout-list scroll-panel" id="reportList"></div>
-          </section>
-
           <section class="sidebar-view ssh-sidebar-view" id="sshSidebarView">
             <div class="sidebar-head">
               <div>
@@ -309,6 +284,12 @@
               </div>
               <div class="editor-tools">
                 <button class="mode-button mobile-width-button" id="mobileTerminalWidthBtn" type="button" aria-pressed="false">Fit</button>
+                <button class="ghost-button editor-split-button history-rail-button" id="historyRailBtn" type="button" aria-pressed="true" title="History: show or hide the inputs sent to this pane">
+                  <svg class="image-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M4 6h10M4 12h7M4 18h10"></path>
+                    <path d="m17 9 3 3-3 3"></path>
+                  </svg>
+                </button>
                 <button class="ghost-button editor-split-button" id="splitRightBtn" type="button" title="Split right" aria-label="Split right">◫</button>
                 <button class="ghost-button editor-split-button" id="splitDownBtn" type="button" title="Split down" aria-label="Split down">⊟</button>
                 <div class="editor-menu" id="editorMenu">
@@ -380,6 +361,13 @@
                   </svg>
                   <span>No ⏎</span>
                 </button>
+                <button class="ghost-button composer-tool-button" id="liveKeysToggle" type="button" aria-pressed="false" title="Live keys: send every keystroke to the pane as you type, like a terminal">
+                  <svg class="image-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M4 18V6M8 12h12"></path>
+                    <path d="m16 8 4 4-4 4"></path>
+                  </svg>
+                  <span>Live</span>
+                </button>
               </div>
               <div class="composer-stack" id="composerStack">
                 <div class="image-attachment" id="imageAttachment" hidden>
@@ -408,6 +396,41 @@
           </section>
         </main>
 
+        <div class="resize-handle secondary-resize-handle" id="secondaryResizeHandle" role="separator" aria-orientation="vertical" title="Drag to resize the right sidebar"></div>
+
+        <aside class="secondary-sidebar" id="secondarySidebar" aria-label="Browser and History">
+          <div class="secondary-head">
+            <button class="mobile-back-button" id="mobileBackFromBrowserListBtn" type="button">‹ Back</button>
+            <div class="segmented-control secondary-tabs" id="secondaryTabs" role="tablist" aria-label="Right sidebar">
+              <button class="mode-button secondary-tab" type="button" role="tab" data-secondary-tab="browser" aria-selected="false">Browser</button>
+              <button class="mode-button secondary-tab" type="button" role="tab" data-secondary-tab="history" aria-selected="false">History <small id="historyRailCount"></small></button>
+            </div>
+            <div class="sidebar-head-actions">
+              <button class="icon-button" id="reloadReportsBtn" type="button" aria-label="Reload reports" title="Reload reports">↻</button>
+              <button class="ghost-button history-rail-clear" id="historyRailClearBtn" type="button" title="Forget the inputs listed for this pane" hidden>Clear</button>
+              <button class="icon-button secondary-close" id="secondaryCloseBtn" type="button" aria-label="Hide the right sidebar" title="Hide">×</button>
+            </div>
+          </div>
+
+          <section class="secondary-panel" id="browserSidebarView" role="tabpanel" hidden>
+            <form class="layout-save-form" id="reportOpenForm">
+              <label class="composer-field">
+                <span class="sr-only">Path or URL</span>
+                <input id="reportUrlInput" type="text" placeholder="/path/to/report.html, a directory, or https://…" autocomplete="off" spellcheck="false" />
+              </label>
+              <button class="secondary-button" type="submit">Open</button>
+            </form>
+
+            <div class="status-panel subtle" id="reportSummary">Pages opened in the Browser are listed here on every device. Paths are read through the selected target; a directory opens a file listing.</div>
+
+            <div class="layout-list scroll-panel" id="reportList"></div>
+          </section>
+
+          <section class="secondary-panel" id="historySidebarView" role="tabpanel" hidden>
+            <div class="history-rail-list scroll-panel" id="historyRailList"></div>
+          </section>
+        </aside>
+
         <button class="browser-handle" id="browserHandleBtn" type="button" hidden aria-label="Open Browser">
           <svg class="browser-handle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <circle cx="12" cy="12" r="9"></circle>
@@ -428,6 +451,7 @@
             <div class="preview-head-actions">
               <button class="mobile-back-button mobile-browser-back-button" id="mobileBrowserBackBtn" type="button">‹ Terminal</button>
               <button class="ghost-button head-text-button mobile-only-button" id="mobileReportsBtn" type="button" title="Report list">Reports</button>
+              <button class="icon-button" id="downloadPreviewBtn" type="button" aria-label="Download this page" title="Download this page as the target serves it">⬇</button>
               <button class="icon-button" id="pinBrowserBtn" type="button" aria-label="Pin Browser" aria-pressed="false">📌</button>
               <button class="icon-button" id="closePreviewBtn" type="button" aria-label="Hide Browser">×</button>
             </div>
@@ -490,26 +514,30 @@
     <script src="/modules/browser-utils.js?v=0.2.2"></script>
     <script src="/modules/mobile-utils.js?v=0.2.2"></script>
     <script src="/modules/preview-history.js?v=0.2.1"></script>
-    <script src="/modules/composer-utils.js?v=0.2.4"></script>
+    <script src="/modules/composer-utils.js?v=1.1.2"></script>
     <script src="/modules/pane-tree.js?v=0.2.1"></script>
     <script src="/modules/layout-utils.js?v=0.3.0"></script>
     <script src="/modules/resize-utils.js?v=0.3.0"></script>
     <script src="/modules/terminal-lines.js?v=0.2.2"></script>
     <script src="/modules/ansi-utils.js?v=0.2.1"></script>
+    <script src="/modules/input-history.js?v=1.1.2"></script>
+    <script src="/modules/pane-order.js?v=1.1.2"></script>
     <!-- app/*.js share one global scope; main.js runs init(). Order matters only for core.js first and main.js last. -->
-    <script src="/app/core.js?v=1.1.1"></script>
+    <script src="/app/core.js?v=1.1.4"></script>
     <script src="/app/debug.js?v=1.1.1"></script>
-    <script src="/app/preferences.js?v=1.1.1"></script>
-    <script src="/app/mobile.js?v=1.1.1"></script>
-    <script src="/app/shell.js?v=1.1.1"></script>
-    <script src="/app/browser.js?v=1.1.1"></script>
-    <script src="/app/screen.js?v=1.1.1"></script>
-    <script src="/app/composer.js?v=1.1.1"></script>
+    <script src="/app/preferences.js?v=1.1.3"></script>
+    <script src="/app/mobile.js?v=1.1.3"></script>
+    <script src="/app/shell.js?v=1.1.3"></script>
+    <script src="/app/browser.js?v=1.1.4"></script>
+    <script src="/app/screen.js?v=1.1.2"></script>
+    <script src="/app/composer.js?v=1.1.2"></script>
     <script src="/app/targets.js?v=1.1.1"></script>
-    <script src="/app/sessions.js?v=1.1.1"></script>
+    <script src="/app/sessions.js?v=1.1.2"></script>
+    <script src="/app/session-drag.js?v=1.1.2"></script>
+    <script src="/app/history.js?v=1.1.3"></script>
     <script src="/app/views.js?v=1.1.1"></script>
     <script src="/app/layouts.js?v=1.1.1"></script>
     <script src="/app/live.js?v=1.1.1"></script>
-    <script src="/app/main.js?v=1.1.1"></script>
+    <script src="/app/main.js?v=1.1.2"></script>
   </body>
 </html>

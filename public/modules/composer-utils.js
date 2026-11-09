@@ -125,8 +125,62 @@
     return PASSTHROUGH_KEYS[event.key] || null;
   }
 
+  const LIVE_KEY_NAMES = {
+    Enter: "enter",
+    Backspace: "backspace",
+    Tab: "tab",
+    Escape: "escape",
+    Delete: "delete",
+    Insert: "insert",
+    ArrowUp: "up",
+    ArrowDown: "down",
+    ArrowLeft: "left",
+    ArrowRight: "right",
+    Home: "home",
+    End: "end",
+    PageUp: "page_up",
+    PageDown: "page_down",
+    " ": "space"
+  };
+
+  // Live keys: one keydown becomes one key name for /api/send-key. Printable
+  // characters go as themselves (the browser already applied Shift), named keys
+  // and F-keys by name, Ctrl/Alt as prefixes; Shift is only named for non-text
+  // keys and for letters under Ctrl/Alt. Cmd combos stay with the browser; IME
+  // composition, dead keys and lone modifiers produce nothing, and the text
+  // they insert later reaches the pane through the input event instead.
+  function getLiveKeyOnKeydown(event) {
+    if (event.isComposing || event.metaKey) {
+      return null;
+    }
+    const key = String(event.key || "");
+    let base = LIVE_KEY_NAMES[key] || null;
+    if (!base && /^F([1-9]|1[0-2])$/.test(key)) {
+      base = key.toLowerCase();
+    }
+    if (!base && key.length === 1) {
+      base = key;
+    }
+    if (!base) {
+      return null;
+    }
+    const mods = [];
+    if (event.ctrlKey) {
+      mods.push("ctrl");
+    }
+    if (event.altKey) {
+      mods.push("alt");
+    }
+    if (event.shiftKey && (key.length !== 1 || (mods.length && /[a-z]/i.test(key)))) {
+      mods.push("shift");
+      base = base.toLowerCase();
+    }
+    return [...mods, base].join("+");
+  }
+
   const api = {
     SPECIAL_KEY_GROUPS,
+    getLiveKeyOnKeydown,
     getPassthroughKeyOnKeydown,
     flattenSpecialKeys,
     getSpecialKeyById,

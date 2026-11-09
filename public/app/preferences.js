@@ -9,6 +9,15 @@ function getEffectiveSidebarWidth() {
   return clamp(state.sidebarWidth, bounds.min, bounds.max);
 }
 
+function getSecondaryWidthBounds() {
+  return RESIZE_UTILS.sidebarWidthBounds(window.innerWidth || 1200, SECONDARY_WIDTH_RANGE);
+}
+
+function getEffectiveSecondaryWidth() {
+  const bounds = getSecondaryWidthBounds();
+  return clamp(state.secondaryWidth, bounds.min, bounds.max);
+}
+
 function getActivityBarWidth() {
   const value = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--activity-width"));
   return Number.isFinite(value) ? value : 54;
@@ -19,7 +28,9 @@ function getBrowserWidthBounds() {
   return RESIZE_UTILS.browserWidthBounds({
     viewportWidth,
     activityWidth: getActivityBarWidth(),
-    sidebarWidth: viewportWidth <= 720 || !state.sidebarVisible ? 0 : getEffectiveSidebarWidth(),
+    sidebarWidth:
+      (viewportWidth <= 720 || !state.sidebarVisible ? 0 : getEffectiveSidebarWidth()) +
+      (viewportWidth <= 720 || !state.secondaryVisible ? 0 : getEffectiveSecondaryWidth()),
     range: BROWSER_WIDTH_RANGE
   });
 }
@@ -45,7 +56,7 @@ function normalizeFontSizePx(value) {
   return FONT_SIZE_RANGE.default;
 }
 
-const SIDEBAR_VIEW_SET = new Set(["ssh", "sessions", "layouts", "browser"]);
+const SIDEBAR_VIEW_SET = new Set(["ssh", "sessions", "layouts"]);
 
 function loadUiPreferences() {
   try {
@@ -97,6 +108,11 @@ function loadUiPreferences() {
         ? clamp(parsed.bottomPanelHeight, PANEL_HEIGHT_RANGE.min, PANEL_HEIGHT_RANGE.max)
         : PANEL_HEIGHT_RANGE.default;
     state.bottomPanelPinned = Boolean(parsed.bottomPanelPinned);
+    state.secondaryVisible = parsed.secondaryVisible !== false;
+    state.secondaryTab = SECONDARY_TAB_SET.has(parsed.secondaryTab) ? parsed.secondaryTab : "history";
+    state.secondaryWidth = Number.isFinite(parsed.secondaryWidth)
+      ? clamp(parsed.secondaryWidth, SECONDARY_WIDTH_RANGE.min, SECONDARY_WIDTH_RANGE.max)
+      : SECONDARY_WIDTH_RANGE.default;
   } catch (error) {
     state.autoRefresh = true;
     state.autoFitPane = true;
@@ -117,6 +133,9 @@ function loadUiPreferences() {
     state.browserWidth = BROWSER_WIDTH_RANGE.default;
     state.bottomPanelHeight = PANEL_HEIGHT_RANGE.default;
     state.bottomPanelPinned = false;
+    state.secondaryVisible = true;
+    state.secondaryTab = "history";
+    state.secondaryWidth = SECONDARY_WIDTH_RANGE.default;
   }
 }
 
@@ -180,7 +199,10 @@ function saveUiPreferences() {
       sidebarWidth: state.sidebarWidth,
       browserWidth: state.browserWidth,
       bottomPanelHeight: state.bottomPanelHeight,
-      bottomPanelPinned: state.bottomPanelPinned
+      bottomPanelPinned: state.bottomPanelPinned,
+      secondaryVisible: state.secondaryVisible,
+      secondaryTab: state.secondaryTab,
+      secondaryWidth: state.secondaryWidth
     })
   );
 }

@@ -147,6 +147,7 @@ async function selectWindow(windowId) {
   renderMobilePaneSwitcher();
   renderViewerMeta();
   applyUiState();
+  renderHistoryRail();
   await refreshScreen({
     force: true,
     scrollToBottom: activeExtent() === "screen" || (activeExtent() === "all" && state.allTextFollowTail)
@@ -167,7 +168,7 @@ function renderMobilePaneSwitcher() {
   }
 
   elements.mobilePaneSwitcher.hidden = false;
-  elements.mobilePaneSwitcher.innerHTML = state.flatWindows
+  elements.mobilePaneSwitcher.innerHTML = orderedPanes(state.flatWindows)
     .map((windowInfo) => {
       const selected = Number(windowInfo.id) === Number(state.selectedWindowId) ? "selected" : "";
       const title = [
@@ -216,6 +217,10 @@ function bindSessionCreateControls() {
 }
 
 function renderSessions() {
+  if (isPaneDragActive()) {
+    paneDragRenderPending = true;
+    return;
+  }
   const totalWindows = state.flatWindows.length;
   const selectedTarget = getSelectedTarget();
   const labels = state.sessionLabels;
@@ -252,7 +257,7 @@ function renderSessions() {
   // tmux panes are listed flat: the session and window levels carry no
   // information the pane card does not already show.
   const markup = backendFeature("flatPanes")
-    ? `<section class="pane-grid pane-cards">${state.flatWindows.map((window) => paneCardMarkup(window)).join("")}</section>`
+    ? `<section class="pane-grid pane-cards">${orderedPanes(state.flatWindows).map((window) => paneCardMarkup(window)).join("")}</section>`
     : state.sessionTree
     .map((osWindow) => {
       const osWindowAnchor = getFirstWindowInOsWindow(osWindow);
@@ -261,7 +266,7 @@ function renderSessions() {
         .map((tab) => {
           const tabAnchor = getFirstWindowInTab(tab);
           const splitCreateDisabled = tabAnchor ? "" : "disabled";
-          const windows = (tab.windows || []).map((window) => paneCardMarkup(window)).join("");
+          const windows = orderedPanes(tab.windows || []).map((window) => paneCardMarkup(window)).join("");
 
           return `
             <article class="tab-block">

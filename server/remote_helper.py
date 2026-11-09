@@ -536,11 +536,40 @@ def send_key_sequence(send, names):
         send(names)
 
 
+def kitty_key_text(name):
+    # kitty's send-key drops Shift on printable keys in the legacy keyboard
+    # mode (shift+a arrives as "a"), so printable characters go as text.
+    if name == "space":
+        return " "
+    if len(name) == 1:
+        return name
+    parts = name.lower().split("+")
+    if len(parts) == 2 and parts[0] == "shift" and len(parts[1]) == 1 and parts[1].isalpha():
+        return parts[1].upper()
+    return None
+
+
+def kitty_send_keys(window_id, socket, names):
+    match = ["--match", f"id:{window_id}"]
+    runs = []
+    for name in names:
+        text = kitty_key_text(name)
+        if runs and runs[-1][0] == (text is not None):
+            runs[-1][1].append(text if text is not None else name)
+        else:
+            runs.append((text is not None, [text if text is not None else name]))
+    for is_text, items in runs:
+        if is_text:
+            run_kitty(["send-text", *match, "--stdin", "--bracketed-paste", "disable"], socket=socket, stdin_text="".join(items))
+        else:
+            run_kitty(["send-key", *match, *items], socket=socket)
+
+
 def action_send_key():
     window_id = int(PAYLOAD["windowId"])
     socket = resolve_socket(PAYLOAD.get("socket") or "")
     keys = key_sequence()
-    send_key_sequence(lambda names: run_kitty(["send-key", "--match", f"id:{window_id}", *names], socket=socket), keys)
+    send_key_sequence(lambda names: kitty_send_keys(window_id, socket, names), keys)
     return {"socket": socket, "windowId": window_id, "key": keys[0], "keys": keys, "repeat": len(keys)}
 
 
@@ -1015,16 +1044,24 @@ TMUX_KEY_NAMES = {
 
 def tmux_key_name(key):
     # Translate kitty-style key names (ctrl+c, shift+left, alt+up) to tmux names.
-    parts = [part for part in str(key or "enter").strip().lower().split("+") if part]
+    # A printable character keeps its case ("A" is typed as A); "+" is itself.
+    raw = str(key or "enter").strip()
+    parts = [part for part in raw.split("+") if part]
+    if raw.endswith("+"):
+        parts.append("+")
     if not parts:
         parts = ["enter"]
-    base = parts[-1]
-    modifiers = set(parts[:-1])
+    base = parts[-1] if len(parts[-1]) == 1 else parts[-1].lower()
+    modifiers = {part.lower() for part in parts[:-1]}
     if base == "tab" and "shift" in modifiers:
         modifiers.discard("shift")
         name = "BTab"
     elif base in TMUX_KEY_NAMES:
         name = TMUX_KEY_NAMES[base]
+    elif base == ";":
+        # A bare ";" argument ends a tmux command; "\;" is the literal key.
+        name = "\\;"
+        modifiers.discard("shift")
     elif len(base) == 1:
         name = base.upper() if "shift" in modifiers and base.isalpha() else base
         modifiers.discard("shift")

@@ -5,7 +5,7 @@ A local web app that drives terminals from a browser: an iPad, a phone or anothe
 - `kitty`: the terminal is a GUI kitty window, so everything the browser does is also visible on that machine's physical display.
 - `tmux`: a headless tmux server, with nothing on any display. This is the backend for GPU servers and other machines without a GUI.
 
-Current release: `v1.1.1`. Repository: <https://github.com/identxxy/terminal-dock> (the old `kitty-remote-deck` URL redirects). Browser-storage keys, `KRD_*` environment variables and the `krd_` token prefix keep their pre-1.0 names so existing settings and device tokens carry over.
+Current release: `v1.1.2`. Repository: <https://github.com/identxxy/terminal-dock> (the old `kitty-remote-deck` URL redirects). Browser-storage keys, `KRD_*` environment variables and the `krd_` token prefix keep their pre-1.0 names so existing settings and device tokens carry over.
 
 ## What It Does
 
@@ -18,8 +18,11 @@ Current release: `v1.1.1`. Repository: <https://github.com/identxxy/terminal-doc
 - Shows a pane as `Transcript` (its text plus scrollback, scrolled in the browser) or `Screen` (the live window as the terminal shows it, every tmux pane in place), preserving ANSI colors. Full-screen apps always use Screen.
 - In Screen mode, swipes and the wheel scroll the pane itself: kitty through remote control, tmux through a server-side history offset that never enters copy mode.
 - Turns `http://`, `https://`, `file://`, and terminal OSC 8 hyperlinks in output into preview links.
-- Opens an embedded right-side Browser with back/forward navigation, history, an address bar and optional pinning. Pages load through the selected target by path-shaped proxy URLs, so relative references, `fetch()`/XHR calls, ES module imports and elements created at runtime all work; private hosts go through the target, public CDNs load directly, and a directory path shows a file listing. The bottom activity-bar view lists opened pages (`Reports`, stored on the server, pinnable) and takes a path or URL. See `docs/url-preview-proxy.md`.
+- Opens an embedded right-side Browser with back/forward navigation, history, an address bar and optional pinning. Pages load through the selected target by path-shaped proxy URLs, so relative references, `fetch()`/XHR calls, ES module imports and elements created at runtime all work; private hosts go through the target, public CDNs load directly, and a directory path shows a file listing. The bottom activity-bar view lists opened pages (`Reports`, stored on the server, pinnable) and takes a path or URL. The download button in the drawer head saves the current page as the target serves it, without the proxy rewriting. See `docs/url-preview-proxy.md`.
 - Sends text, `Enter`, and special keys such as `Esc`, `Tab`, `Ctrl+C`, `Ctrl+D`, line-editing shortcuts, and arrow keys to the selected pane. While the composer is empty, pressing an arrow key or `Esc` sends it to the pane directly; `Enter` on an empty composer sends `Enter`.
+- Live keys: the `Live` toggle above the composer sends every keystroke to the pane as you type, like sitting at the terminal (vim, pagers, menus). Ctrl/Alt/Shift combinations go as key names, text that a soft keyboard or IME inserts goes as text, and Cmd shortcuts stay with the browser. Press `Live` again to return to the normal composer; the setting is not remembered across reloads.
+- Right sidebar with two tabs: Browser (the pages opened in the embedded Browser) and History (the text sent to the selected pane from the composer, kept on the server per pane in `data/input-history.json`, 32 entries per pane with the time and transcript position of each, shared by every device). Tap a History entry to jump to where the prompt was echoed; the entry whose output is on screen is marked. The globe in the activity bar opens the Browser tab, the toolbar button next to the split buttons opens the History tab; the × hides the sidebar and its edge is draggable when the layout is unlocked. On a phone the sidebar is the Reports screen.
+- Drag session cards to reorder them (on touch, hold a card first). The order is remembered per target in this browser only.
 - Persists UI preferences such as sidebar state and font size in the browser.
 
 ## Requirements

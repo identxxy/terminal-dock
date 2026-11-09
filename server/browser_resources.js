@@ -71,16 +71,47 @@ function browserResourceHeaders(data, url, extraHeaders = {}) {
   };
 }
 
-// The proxied resource a request names, in either URL form.
+// The proxied resource a request names, in either URL form. `download=1` on
+// the query form asks for the file as the target serves it (no rewriting) with
+// an attachment disposition, so the viewer's browser saves it.
 function proxiedResourceFromRequest(requestUrl) {
   if (requestUrl.pathname === "/api/url-resource") {
     return {
       targetId: requestUrl.searchParams.get("targetId") || "",
       url: requestUrl.searchParams.get("url") || "",
-      accessToken: requestUrl.searchParams.get("access") || ""
+      accessToken: requestUrl.searchParams.get("access") || "",
+      download: requestUrl.searchParams.get("download") === "1"
     };
   }
   return parseProxyPath(requestUrl.pathname, requestUrl.search);
+}
+
+// The name the saved file gets: the URL's last path segment, or the host for a
+// site root; HTML without an extension gets .html so it opens in a browser.
+function downloadFileName(url, contentType = "") {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch (error) {
+    return "download";
+  }
+  let name = "";
+  try {
+    name = decodeURIComponent(parsed.pathname.split("/").filter(Boolean).pop() || "");
+  } catch (error) {
+    name = parsed.pathname.split("/").filter(Boolean).pop() || "";
+  }
+  name = name.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "_").trim() || parsed.hostname || "page";
+  if (isHtmlContentType(contentType) && !/\.x?html?$/i.test(name)) {
+    name += ".html";
+  }
+  return name;
+}
+
+function downloadHeaders(url, contentType = "") {
+  const name = downloadFileName(url, contentType);
+  const ascii = name.replace(/[^\x20-\x7e]/g, "_").replace(/"/g, "'");
+  return { "Content-Disposition": `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}` };
 }
 
 function sendRangeNotSatisfiable(response, size, data) {
@@ -93,7 +124,7 @@ function sendRangeNotSatisfiable(response, size, data) {
 // file:// on a local target is streamed straight from disk (ranges included)
 // instead of round-tripping through the helper. Returns false when the helper
 // should serve it instead: remote targets, directories, non-file URLs.
-async function serveLocalFileResource(request, response, target, url, accessToken = "") {
+async function serveLocalFileResource(request, response, target, url, accessToken = "", options = {}) {
   if (normalizeTransport(target.transport) !== "local") {
     return false;
   }
@@ -124,6 +155,16 @@ async function serveLocalFileResource(request, response, target, url, accessToke
   const contentType = guessResourceContentType(filePath);
   const data = { url, finalUrl: url, truncated: false };
   const commonHeaders = browserResourceHeaders(data, url, { "Accept-Ranges": "bytes" });
+
+  if (options.download) {
+    sendStream(response, 200, fs.createReadStream(filePath), contentType, {
+      ...commonHeaders,
+      ...downloadHeaders(url, contentType),
+      "Content-Length": stat.size
+    });
+    return true;
+  }
+
   const rangeHeader = request.headers.range || "";
 
   if (rangeHeader) {
@@ -159,6 +200,8 @@ module.exports = {
   RESOURCE_MIME_TYPES,
   browserResourceHeaders,
   decodeFetchedResource,
+  downloadFileName,
+  downloadHeaders,
   guessResourceContentType,
   proxiedResourceFromRequest,
   serveLocalFileResource,

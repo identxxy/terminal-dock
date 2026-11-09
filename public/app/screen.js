@@ -44,6 +44,7 @@ function renderScreenData(data, options = {}) {
   } else {
     renderScreenText(data?.text || "", options);
   }
+  scheduleHistoryRail();
 }
 
 function leaveWindowLayout() {
@@ -215,6 +216,7 @@ function renderPaneLoading(windowId) {
   elements.screenOutput.setAttribute("aria-busy", "true");
   elements.screenOutput.dataset.paneId = String(windowId ?? "");
   elements.screenOutput.scrollTop = 0;
+  scheduleHistoryRail();
 }
 
 // Scroll events arrive per frame while swiping; the bookkeeping runs once per
@@ -222,12 +224,15 @@ function renderPaneLoading(windowId) {
 let screenScrollFrame = 0;
 
 function handleScreenOutputScroll() {
-  if (activeExtent() !== "all" || screenScrollFrame) {
+  if (screenScrollFrame) {
     return;
   }
   screenScrollFrame = requestAnimationFrame(() => {
     screenScrollFrame = 0;
-    trackTranscriptScroll();
+    if (activeExtent() === "all") {
+      trackTranscriptScroll();
+    }
+    updateHistoryRailCurrent();
   });
 }
 

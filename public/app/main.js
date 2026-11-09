@@ -8,6 +8,8 @@ function attachEvents() {
   bindComposerEvents();
   bindTargetsEvents();
   bindSessionsEvents();
+  bindSessionDragEvents();
+  bindHistoryEvents();
   bindViewsEvents();
   bindLayoutsEvents();
   bindLiveEvents();
@@ -40,6 +42,7 @@ async function init() {
   window.__KRD_BUILD = CLIENT_BUILD;
   initializeClientDebug();
   loadUiPreferences();
+  loadPaneOrder();
   applyUiState();
   resetMobileStack(state.mobileScreen);
   renderSpecialKeyMenu();

@@ -229,6 +229,7 @@ async function sendText(options = {}) {
       : `Text sent to pane #${pane.windowId}.`,
     "success"
   );
+  recordInputHistory(pane, text);
   elements.sendTextInput.value = "";
   autosizeComposer();
   noteScreenActivity();
@@ -274,6 +275,7 @@ async function sendImageAttachment(options = {}) {
       : `Image ${attachment.name} sent.`,
     "success"
   );
+  recordInputHistory(pane, text);
   elements.sendTextInput.value = "";
   autosizeComposer();
   clearImageAttachment();
@@ -363,7 +365,95 @@ async function sendComposerShortcut() {
   return false;
 }
 
+// ---- Live keys ---------------------------------------------------------------
+// With the toggle on, every keydown in the composer goes to the pane at once
+// instead of into the textbox, like typing in the terminal: vim, pagers, menus.
+// Keys queue in order and leave in batches of up to 8 per request; text the
+// browser inserts anyway (IME, soft keyboards, paste) is sent as text in turn.
+let liveKeyQueue = [];
+
+let liveKeyFlushing = false;
+
+function setLiveKeys(enabled) {
+  state.liveKeys = Boolean(enabled);
+  elements.liveKeysToggle.setAttribute("aria-pressed", String(state.liveKeys));
+  elements.sendForm.classList.toggle("live-keys", state.liveKeys);
+  elements.sendTextInput.placeholder = state.liveKeys ? "Live keys · every keystroke goes to the pane" : COMPOSER_PLACEHOLDER;
+  if (state.liveKeys) {
+    closeSpecialKeyMenu();
+    elements.sendTextInput.focus();
+    setStatus("Live keys on: keystrokes go straight to the pane.", "neutral");
+  } else {
+    liveKeyQueue = [];
+    setStatus("Live keys off.", "neutral");
+  }
+}
+
+function queueLiveInput(item) {
+  if (!state.selectedTargetId || !hasSelectedWindow()) {
+    setStatus("Select a pane first.", "warning");
+    return;
+  }
+  liveKeyQueue.push(item);
+  flushLiveKeys();
+}
+
+async function flushLiveKeys() {
+  if (liveKeyFlushing) {
+    return;
+  }
+  liveKeyFlushing = true;
+  const pane = captureSelectedPane();
+  const post = (path, body) => apiFetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ targetId: pane.targetId, socket: pane.socket, windowId: pane.windowId, ...body })
+  });
+  try {
+    while (liveKeyQueue.length && state.liveKeys && isPaneStillSelected(pane)) {
+      if (liveKeyQueue[0].text !== undefined) {
+        await post("/api/send-text", { text: liveKeyQueue.shift().text, appendNewline: false });
+      } else {
+        const keys = [];
+        while (liveKeyQueue.length && keys.length < 8 && liveKeyQueue[0].key !== undefined) {
+          keys.push(liveKeyQueue.shift().key);
+        }
+        await post("/api/send-key", { key: keys[0], keys, repeat: 1 });
+      }
+      noteScreenActivity();
+    }
+  } catch (error) {
+    liveKeyQueue = [];
+    setStatus(error.message, "danger");
+  } finally {
+    liveKeyFlushing = false;
+  }
+  if (isPaneStillSelected(pane)) {
+    refreshScreen({ scrollToBottom: true }).catch(() => {});
+  }
+}
+
+// Text that reached the textbox despite live keys (IME commit, soft keyboard,
+// paste) goes to the pane as text and leaves the textbox empty.
+function drainLiveText() {
+  const text = elements.sendTextInput.value;
+  if (!text) {
+    return;
+  }
+  elements.sendTextInput.value = "";
+  autosizeComposer();
+  queueLiveInput({ text });
+}
+
 function bindComposerEvents() {
+  elements.liveKeysToggle.addEventListener("click", () => setLiveKeys(!state.liveKeys));
+
+  elements.sendTextInput.addEventListener("compositionend", () => {
+    if (state.liveKeys) {
+      drainLiveText();
+    }
+  });
+
   document.addEventListener("pointerdown", (event) => {
     if (!elements.specialKeyMenu.contains(event.target)) {
       closeSpecialKeyMenu();
@@ -446,7 +536,13 @@ function bindComposerEvents() {
     setStatus("Pending image removed.", "neutral");
   });
 
-  elements.sendTextInput.addEventListener("input", autosizeComposer);
+  elements.sendTextInput.addEventListener("input", (event) => {
+    if (state.liveKeys && !event.isComposing) {
+      drainLiveText();
+      return;
+    }
+    autosizeComposer();
+  });
 
   elements.sendTextInput.addEventListener("paste", async (event) => {
     const file = getImageFileFromDataTransfer(event.clipboardData);
@@ -489,6 +585,15 @@ function bindComposerEvents() {
   });
 
   elements.sendTextInput.addEventListener("keydown", async (event) => {
+    if (state.liveKeys) {
+      const liveKey = COMPOSER_UTILS.getLiveKeyOnKeydown(event);
+      if (liveKey) {
+        event.preventDefault();
+        queueLiveInput({ key: liveKey });
+      }
+      return;
+    }
+
     const passthroughKey = COMPOSER_UTILS.getPassthroughKeyOnKeydown(event, elements.sendTextInput.value);
     if (passthroughKey) {
       event.preventDefault();

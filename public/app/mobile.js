@@ -36,21 +36,12 @@ function applyMobileScreen(screen) {
     }
   }
 
-  if (nextScreen === "connect") {
-    state.activeSidebarView = "ssh";
-    state.sidebarVisible = true;
-  } else if (nextScreen === "sessions") {
-    state.activeSidebarView = "sessions";
-    state.sidebarVisible = true;
-  } else if (nextScreen === "layouts") {
-    state.activeSidebarView = "layouts";
-    state.sidebarVisible = true;
-  } else if (nextScreen === "reports") {
-    state.activeSidebarView = "browser";
-    state.sidebarVisible = true;
-  } else {
-    state.sidebarVisible = false;
+  const sidebarView = MOBILE_SIDEBAR_VIEWS[nextScreen];
+  state.sidebarVisible = Boolean(sidebarView);
+  if (sidebarView) {
+    state.activeSidebarView = sidebarView;
   }
+  state.secondaryVisible = nextScreen === "reports";
 
   applyUiState();
   if (nextScreen === "browser") {

@@ -7,6 +7,7 @@ const { runHelperAction } = require("./helper_runner");
 const { WatcherRegistry } = require("./tmux_watcher");
 const { createLayoutStore } = require("./layouts");
 const { createReportStore } = require("./reports");
+const { createInputHistoryStore } = require("./input_history");
 const { createTargetStore } = require("./targets");
 const { createScreenCache } = require("./screen_cache");
 const { createPreviewAccess } = require("./preview_access");
@@ -47,6 +48,7 @@ async function createContext(options = {}) {
     targetStore,
     layoutStore: createLayoutStore(path.join(dataDir, "layouts.json")),
     reportStore: createReportStore(path.join(dataDir, "reports.json")),
+    inputHistoryStore: createInputHistoryStore(path.join(dataDir, "input-history.json")),
     runHelper,
     previewAccess,
     hasPreviewResourceAccess: (requestUrl) => {

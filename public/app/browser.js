@@ -191,6 +191,32 @@ function closePreview() {
   refreshPaneAfterMobileReturn();
 }
 
+// Save the page in the address bar as the target serves it: the server skips
+// the proxy rewriting and answers with an attachment disposition, so the
+// viewer's browser downloads the original file.
+async function downloadPreview() {
+  const target = getPreviewTarget();
+  if (!target || !state.previewUrl) {
+    setPreviewStatus("No Browser page to download yet.", "neutral");
+    return;
+  }
+  await refreshPreviewAccessToken();
+  const params = new URLSearchParams({
+    targetId: target.id,
+    url: state.previewUrl,
+    access: state.previewAccessToken,
+    download: "1"
+  });
+  const link = document.createElement("a");
+  link.href = `/api/url-resource?${params.toString()}`;
+  link.download = "";
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setPreviewStatus(`Downloading ${state.previewUrl}`, "neutral");
+}
+
 function toggleBrowserPin() {
   state.previewPinned = !state.previewPinned;
   if (state.previewPinned && state.previewUrl) {
@@ -304,10 +330,11 @@ function maybeCloseUnpinnedBrowser(event) {
   const path = event.composedPath ? event.composedPath() : [];
   if (
     path.includes(elements.previewDrawer) ||
-    path.includes(elements.browserSidebarView) ||
-    path.includes(elements.showBrowserViewBtn)
+    path.includes(elements.showBrowserViewBtn) ||
+    (path.includes(elements.secondarySidebar) && !path.includes(elements.historySidebarView))
   ) {
-    // The Browser view (reports, address field) belongs to the Browser.
+    // The Browser list and the right sidebar's tabs belong to the Browser; a
+    // tap in the History list means the transcript is wanted.
     return;
   }
 
@@ -473,10 +500,12 @@ async function deleteReport(reportId) {
 
 function bindBrowserEvents() {
   elements.mobileBrowserListBtn.addEventListener("click", () => {
+    state.secondaryTab = "browser";
     setMobileScreen("reports");
   });
 
   elements.mobileReportsBtn.addEventListener("click", () => {
+    state.secondaryTab = "browser";
     setMobileScreen("reports");
   });
 
@@ -529,6 +558,10 @@ function bindBrowserEvents() {
   elements.mobileBrowserBackBtn.addEventListener("click", closePreview);
 
   elements.pinBrowserBtn.addEventListener("click", toggleBrowserPin);
+
+  elements.downloadPreviewBtn.addEventListener("click", () => {
+    downloadPreview().catch((error) => setPreviewStatus(error.message, "danger"));
+  });
 
   attachBrowserHandle();
 

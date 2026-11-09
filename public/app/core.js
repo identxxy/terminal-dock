@@ -12,6 +12,8 @@ const MOBILE_HISTORY_KEY = "krdMobileScreen";
 
 const LAST_PANE_STORAGE_KEY = "kitty-remote-deck-last-pane";
 
+const PANE_ORDER_STORAGE_KEY = "terminal-dock-pane-order";
+
 const FONT_SIZE_RANGE = { min: 5, max: 18, default: 13 };
 
 const THEME_SET = new Set(["dark", "graphite", "nord", "mocha", "tokyo", "gruvbox", "rosepine", "cyberpunk-dark", "light", "latte", "solarized", "cyberpunk-light"]);
@@ -23,6 +25,11 @@ const MOBILE_TERMINAL_WIDTH_SET = new Set(["fit", "wide"]);
 const MOBILE_SCREEN_SET = new Set(["connect", "sessions", "layouts", "reports", "chat", "browser"]);
 
 const SIDEBAR_WIDTH_RANGE = { min: 220, max: 520 };
+
+// The right sidebar (Browser list and input History).
+const SECONDARY_WIDTH_RANGE = { min: 200, max: 520, default: 300 };
+
+const SECONDARY_TAB_SET = new Set(["browser", "history"]);
 
 // The chat composer grows with its text up to this height.
 const PANEL_HEIGHT_RANGE = { min: 80, max: 420, default: 160 };
@@ -76,6 +83,11 @@ const MOBILE_UTILS = window.KRDMobileUtils;
 const PREVIEW_HISTORY = window.KRDPreviewHistory;
 
 const COMPOSER_UTILS = window.KRDComposerUtils;
+const INPUT_HISTORY_UTILS = window.KRDInputHistory;
+
+const PANE_ORDER_UTILS = window.KRDPaneOrder;
+
+const COMPOSER_PLACEHOLDER = "Enter sends · Shift+Enter newline · Alt+Enter sends without ⏎";
 
 const PANE_TREE = window.KRDPaneTree;
 
@@ -230,7 +242,17 @@ const state = {
   bottomPanelPinned: false,
   imageAttachment: null,
   composerSending: false,
-  sessionCreating: false
+  // Live keys: keydowns in the composer go to the pane as they happen (session only, never persisted).
+  liveKeys: false,
+  sessionCreating: false,
+  // Per-pane input history fetched from the server (see app/history.js), and
+  // the dragged order of the Sessions cards, per target (see app/session-drag.js).
+  inputHistory: {},
+  paneOrder: {},
+  // The right sidebar: open or not, which tab (Browser list or History) shows, and its width.
+  secondaryVisible: true,
+  secondaryTab: "history",
+  secondaryWidth: SECONDARY_WIDTH_RANGE.default
 };
 
 // Every view slot owns one output element for its whole life. Activating a view
@@ -329,6 +351,7 @@ const elements = {
   browserForwardBtn: document.querySelector("#browserForwardBtn"),
   browserHistorySelect: document.querySelector("#browserHistorySelect"),
   browserGoBtn: document.querySelector("#browserGoBtn"),
+  downloadPreviewBtn: document.querySelector("#downloadPreviewBtn"),
   pinBrowserBtn: document.querySelector("#pinBrowserBtn"),
   mobileBrowserBackBtn: document.querySelector("#mobileBrowserBackBtn"),
   closePreviewBtn: document.querySelector("#closePreviewBtn"),
@@ -339,12 +362,22 @@ const elements = {
   editorMenuBtn: document.querySelector("#editorMenuBtn"),
   editorMenuPopover: document.querySelector("#editorMenuPopover"),
   autoFitToggle: document.querySelector("#autoFitToggle"),
+  secondarySidebar: document.querySelector("#secondarySidebar"),
+  secondaryResizeHandle: document.querySelector("#secondaryResizeHandle"),
+  secondaryTabs: document.querySelector("#secondaryTabs"),
+  secondaryCloseBtn: document.querySelector("#secondaryCloseBtn"),
+  historySidebarView: document.querySelector("#historySidebarView"),
+  historyRailList: document.querySelector("#historyRailList"),
+  historyRailCount: document.querySelector("#historyRailCount"),
+  historyRailClearBtn: document.querySelector("#historyRailClearBtn"),
+  historyRailBtn: document.querySelector("#historyRailBtn"),
   fitPaneBtn: document.querySelector("#fitPaneBtn"),
   zoomPaneBtn: document.querySelector("#zoomPaneBtn"),
   paneTree: document.querySelector("#paneTree"),
   splitRightBtn: document.querySelector("#splitRightBtn"),
   splitDownBtn: document.querySelector("#splitDownBtn"),
   sendRawTextBtn: document.querySelector("#sendRawTextBtn"),
+  liveKeysToggle: document.querySelector("#liveKeysToggle"),
   sendTextBtn: document.querySelector("#sendTextBtn"),
   specialKeyMenu: document.querySelector("#specialKeyMenu"),
   specialKeyMenuBtn: document.querySelector("#specialKeyMenuBtn"),

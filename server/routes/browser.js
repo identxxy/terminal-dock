@@ -3,6 +3,7 @@ const { parseRequestBody, sendBuffer, sendJson } = require("../http_utils");
 const {
   browserResourceHeaders,
   decodeFetchedResource,
+  downloadHeaders,
   proxiedResourceFromRequest,
   serveLocalFileResource,
   transformFetchedResource
@@ -42,20 +43,23 @@ module.exports = () => [
     match: (requestUrl) => Boolean(proxiedResourceFromRequest(requestUrl)),
     auth: "resource",
     handler: async (ctx, request, response, requestUrl) => {
-      const { targetId, url, accessToken } = proxiedResourceFromRequest(requestUrl);
+      const { targetId, url, accessToken, download } = proxiedResourceFromRequest(requestUrl);
       const target = await ctx.targetStore.resolve({ targetId });
-      if (await serveLocalFileResource(request, response, target, url, accessToken)) {
+      if (await serveLocalFileResource(request, response, target, url, accessToken, { download })) {
         return;
       }
 
-      const rangeHeader = request.headers.range || "";
+      const rangeHeader = download ? "" : request.headers.range || "";
       const data = await ctx.runHelper(target, rangeHeader ? "fetch_url_resource" : "fetch_url", { url, range: rangeHeader }, 45000);
-      const transformed = rangeHeader
+      const transformed = rangeHeader || download
         ? { buffer: decodeFetchedResource(data), contentType: data.contentType || "application/octet-stream" }
         : transformFetchedResource(data, target.id, accessToken);
       const headers = browserResourceHeaders(data, url, { "Accept-Ranges": data.acceptRanges || "bytes" });
       if (data.contentRange) {
         headers["Content-Range"] = data.contentRange;
+      }
+      if (download) {
+        Object.assign(headers, downloadHeaders(data.finalUrl || url, transformed.contentType));
       }
       sendBuffer(response, Number(data.statusCode || 200), transformed.buffer, transformed.contentType, headers);
     }

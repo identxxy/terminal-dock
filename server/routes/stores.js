@@ -1,7 +1,7 @@
 const { parseRequestBody, sendJson } = require("../http_utils");
 
-// Reports (pages opened in the Browser) and Layouts (named view layouts), both
-// shared by every device of this deck.
+// Reports (pages opened in the Browser), Layouts (named view layouts) and the
+// per-pane input history, all shared by every device of this deck.
 module.exports = () => [
   {
     method: "GET",
@@ -33,6 +33,33 @@ module.exports = () => [
     handler: async (ctx, request, response) => {
       const body = await parseRequestBody(request);
       await ctx.reportStore.remove(String(body.id || ""));
+      sendJson(response, 200, { ok: true });
+    }
+  },
+  {
+    method: "GET",
+    path: "/api/input-history",
+    auth: "session",
+    handler: async (ctx, request, response, requestUrl) => {
+      const params = requestUrl.searchParams;
+      const pane = { targetId: params.get("targetId"), socket: params.get("socket") || "", windowId: params.get("windowId") };
+      sendJson(response, 200, { entries: await ctx.inputHistoryStore.list(pane) });
+    }
+  },
+  {
+    method: "POST",
+    path: "/api/input-history",
+    auth: "session",
+    handler: async (ctx, request, response) => {
+      sendJson(response, 200, { entries: await ctx.inputHistoryStore.record(await parseRequestBody(request)) });
+    }
+  },
+  {
+    method: "POST",
+    path: "/api/input-history/delete",
+    auth: "session",
+    handler: async (ctx, request, response) => {
+      await ctx.inputHistoryStore.clear(await parseRequestBody(request));
       sendJson(response, 200, { ok: true });
     }
   },

@@ -8,9 +8,37 @@ const {
   flattenSpecialKeys,
   getSpecialKeyById,
   shouldSendWithoutEnterOnKeydown,
+  getLiveKeyOnKeydown,
   getPassthroughKeyOnKeydown,
   shouldSubmitOnKeydown
 } = composerUtils;
+
+test("live keys turn one keydown into one send-key name", () => {
+  const down = (key, overrides = {}) => ({ key, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, isComposing: false, ...overrides });
+  assert.equal(getLiveKeyOnKeydown(down("a")), "a");
+  // Shift on a printable key is already in event.key, so "A" stays "A" and "!" stays "!".
+  assert.equal(getLiveKeyOnKeydown(down("A", { shiftKey: true })), "A");
+  assert.equal(getLiveKeyOnKeydown(down("!", { shiftKey: true })), "!");
+  assert.equal(getLiveKeyOnKeydown(down("+", { shiftKey: true })), "+");
+  assert.equal(getLiveKeyOnKeydown(down(" ")), "space");
+  assert.equal(getLiveKeyOnKeydown(down("Enter")), "enter");
+  assert.equal(getLiveKeyOnKeydown(down("Escape")), "escape");
+  assert.equal(getLiveKeyOnKeydown(down("Backspace")), "backspace");
+  assert.equal(getLiveKeyOnKeydown(down("ArrowUp")), "up");
+  assert.equal(getLiveKeyOnKeydown(down("PageDown")), "page_down");
+  assert.equal(getLiveKeyOnKeydown(down("F5")), "f5");
+  assert.equal(getLiveKeyOnKeydown(down("c", { ctrlKey: true })), "ctrl+c");
+  assert.equal(getLiveKeyOnKeydown(down("C", { ctrlKey: true, shiftKey: true })), "ctrl+shift+c");
+  assert.equal(getLiveKeyOnKeydown(down("Tab", { shiftKey: true })), "shift+tab");
+  assert.equal(getLiveKeyOnKeydown(down("ArrowLeft", { altKey: true })), "alt+left");
+  assert.equal(getLiveKeyOnKeydown(down("x", { ctrlKey: true, altKey: true })), "ctrl+alt+x");
+  // Cmd combos, IME composition and lone modifiers stay with the browser.
+  assert.equal(getLiveKeyOnKeydown(down("v", { metaKey: true })), null);
+  assert.equal(getLiveKeyOnKeydown(down("a", { isComposing: true })), null);
+  for (const key of ["Shift", "Control", "Alt", "Meta", "CapsLock", "Dead", "Unidentified", "Process", "F13"]) {
+    assert.equal(getLiveKeyOnKeydown(down(key)), null, key);
+  }
+});
 
 test("Enter submits, Shift+Enter inserts a newline, Alt+Enter sends without Enter", () => {
   const key = (overrides) => ({ key: "Enter", shiftKey: false, altKey: false, isComposing: false, ...overrides });

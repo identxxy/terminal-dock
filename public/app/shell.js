@@ -2,26 +2,22 @@
 
 function applyUiState() {
   if (isMobileViewport()) {
-    state.sidebarVisible = state.mobileScreen !== "chat";
-    if (state.mobileScreen === "connect") {
-      state.activeSidebarView = "ssh";
-    } else if (state.mobileScreen === "sessions") {
-      state.activeSidebarView = "sessions";
-    } else if (state.mobileScreen === "layouts") {
-      state.activeSidebarView = "layouts";
-    } else if (state.mobileScreen === "reports") {
-      state.activeSidebarView = "browser";
+    // On a phone the left sidebar is the Connect, Sessions and Layouts screens
+    // and the right sidebar is the Reports screen.
+    const view = MOBILE_SIDEBAR_VIEWS[state.mobileScreen];
+    state.sidebarVisible = Boolean(view);
+    if (view) {
+      state.activeSidebarView = view;
     }
+    state.secondaryVisible = state.mobileScreen === "reports";
   }
 
   const showingSsh = state.activeSidebarView === "ssh";
   const showingSessions = state.activeSidebarView === "sessions";
   const showingLayouts = state.activeSidebarView === "layouts";
-  const showingBrowser = state.activeSidebarView === "browser";
   elements.sshSidebarView.hidden = !showingSsh;
   elements.sessionsSidebarView.hidden = !showingSessions;
   elements.layoutsSidebarView.hidden = !showingLayouts;
-  elements.browserSidebarView.hidden = !showingBrowser;
   elements.appShell.classList.toggle("sidebar-hidden", !state.sidebarVisible);
   elements.appShell.classList.toggle("preview-open", state.previewVisible);
   elements.appShell.classList.toggle("browser-pinned", state.previewVisible && state.previewPinned);
@@ -38,8 +34,6 @@ function applyUiState() {
   elements.showSessionsViewBtn.setAttribute("aria-pressed", String(state.sidebarVisible && showingSessions));
   elements.showLayoutsViewBtn.classList.toggle("active", state.sidebarVisible && showingLayouts);
   elements.showLayoutsViewBtn.setAttribute("aria-pressed", String(state.sidebarVisible && showingLayouts));
-  elements.showBrowserViewBtn.classList.toggle("active", state.sidebarVisible && showingBrowser);
-  elements.showBrowserViewBtn.setAttribute("aria-pressed", String(state.sidebarVisible && showingBrowser));
   elements.appShell.classList.toggle("resize-enabled", state.resizeEnabled);
   elements.previewDrawer.setAttribute("aria-hidden", String(!state.previewVisible));
   applyBrowserHandle();
@@ -55,6 +49,7 @@ function applyUiState() {
   }
   renderBrowserHistoryOptions();
   elements.autoFitToggle.checked = state.autoFitPane;
+  applySecondarySidebar();
   elements.fontSizeValue.textContent = `${state.uiFontSizePx}px`;
   elements.themeSelect.value = state.uiTheme;
   if (elements.fontSizeValueMobile) {
@@ -82,6 +77,7 @@ function applyUiState() {
   document.documentElement.dataset.theme = state.uiTheme;
   document.documentElement.style.setProperty("--sidebar-width", `${getEffectiveSidebarWidth()}px`);
   document.documentElement.style.setProperty("--browser-width", `${getEffectiveBrowserWidth()}px`);
+  document.documentElement.style.setProperty("--secondary-width", `${getEffectiveSecondaryWidth()}px`);
   document.documentElement.style.setProperty("--bottom-panel-height", `${state.bottomPanelHeight}px`);
   autosizeComposer();
   applyResizeLabel();
@@ -89,6 +85,69 @@ function applyUiState() {
   saveUiPreferences();
   // Pinning, unpinning or navigating the Browser changes the active layout.
   scheduleLayoutAutosave();
+}
+
+const MOBILE_SIDEBAR_VIEWS = { connect: "ssh", sessions: "sessions", layouts: "layouts" };
+
+// The right sidebar holds the Browser list and the input History as tabs.
+function secondaryPanelShown(tab) {
+  return state.secondaryVisible && state.secondaryTab === tab;
+}
+
+function applySecondarySidebar() {
+  const browserTab = secondaryPanelShown("browser");
+  const historyTab = secondaryPanelShown("history");
+  elements.appShell.classList.toggle("secondary-open", state.secondaryVisible);
+  elements.browserSidebarView.hidden = !browserTab;
+  elements.historySidebarView.hidden = !historyTab;
+  elements.secondaryTabs.querySelectorAll("[data-secondary-tab]").forEach((button) => {
+    const active = button.dataset.secondaryTab === state.secondaryTab;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  elements.reloadReportsBtn.hidden = !browserTab;
+  if (!historyTab) {
+    elements.historyRailClearBtn.hidden = true;
+  }
+  elements.showBrowserViewBtn.classList.toggle("active", browserTab);
+  elements.showBrowserViewBtn.setAttribute("aria-pressed", String(browserTab));
+  elements.historyRailBtn.classList.toggle("active", historyTab);
+  elements.historyRailBtn.setAttribute("aria-pressed", String(historyTab));
+  scheduleHistoryRail();
+}
+
+// Opens the right sidebar on a tab; clicking the tab's own button again hides
+// the sidebar. On a phone the sidebar is the Reports screen.
+function toggleSecondaryTab(tab) {
+  const nextTab = SECONDARY_TAB_SET.has(tab) ? tab : "history";
+  if (isMobileViewport()) {
+    if (state.mobileScreen !== "reports") {
+      state.secondaryTab = nextTab;
+      setMobileScreen("reports");
+    } else if (state.secondaryTab === nextTab) {
+      handleMobileBack();
+    } else {
+      state.secondaryTab = nextTab;
+      applyUiState();
+    }
+    return;
+  }
+  if (secondaryPanelShown(nextTab)) {
+    state.secondaryVisible = false;
+  } else {
+    state.secondaryTab = nextTab;
+    state.secondaryVisible = true;
+  }
+  applyUiState();
+}
+
+function hideSecondarySidebar() {
+  if (isMobileViewport() && state.mobileScreen === "reports") {
+    handleMobileBack();
+    return;
+  }
+  state.secondaryVisible = false;
+  applyUiState();
 }
 
 // Each phone screen's back button names the screen underneath it.
@@ -304,6 +363,7 @@ function startResize(kind, event) {
     startX: event.clientX,
     startY: event.clientY,
     sidebarWidth: state.sidebarWidth,
+    secondaryWidth: getEffectiveSecondaryWidth(),
     browserWidth: getEffectiveBrowserWidth(),
     bottomPanelHeight: state.bottomPanelHeight
   };
@@ -343,6 +403,15 @@ function handleResizeMove(event) {
     autosizeComposer();
   }
 
+  if (resizeSession.kind === "secondary") {
+    const bounds = getSecondaryWidthBounds();
+    state.secondaryWidth = clamp(
+      resizeSession.secondaryWidth + resizeSession.startX - event.clientX,
+      bounds.min,
+      bounds.max
+    );
+  }
+
   if (resizeSession.kind === "browser") {
     const bounds = getBrowserWidthBounds();
     state.browserWidth = clamp(
@@ -353,6 +422,7 @@ function handleResizeMove(event) {
   }
 
   document.documentElement.style.setProperty("--sidebar-width", `${state.sidebarWidth}px`);
+  document.documentElement.style.setProperty("--secondary-width", `${state.secondaryWidth}px`);
   document.documentElement.style.setProperty("--browser-width", `${getEffectiveBrowserWidth()}px`);
   document.documentElement.style.setProperty("--bottom-panel-height", `${state.bottomPanelHeight}px`);
 }
@@ -409,11 +479,23 @@ function bindShellEvents() {
   });
 
   elements.showBrowserViewBtn.addEventListener("click", () => {
-    setSidebarView("browser");
-    if (state.sidebarVisible && state.previewUrl && !state.previewVisible) {
+    toggleSecondaryTab("browser");
+    if (!isMobileViewport() && secondaryPanelShown("browser") && state.previewUrl && !state.previewVisible) {
       reopenPreview().catch((error) => setPreviewStatus(error.message, "danger"));
     }
   });
+
+  elements.secondaryTabs.addEventListener("click", (event) => {
+    const button = event.target.closest?.("[data-secondary-tab]");
+    if (!button) {
+      return;
+    }
+    state.secondaryTab = SECONDARY_TAB_SET.has(button.dataset.secondaryTab) ? button.dataset.secondaryTab : "history";
+    state.secondaryVisible = true;
+    applyUiState();
+  });
+
+  elements.secondaryCloseBtn.addEventListener("click", hideSecondarySidebar);
 
   elements.decreaseFontBtn.addEventListener("click", () => {
     stepFontSize(-1);
@@ -455,8 +537,11 @@ function bindShellEvents() {
 
   elements.browserResizeHandle.addEventListener("pointerdown", (event) => startResize("browser", event));
 
+  elements.secondaryResizeHandle.addEventListener("pointerdown", (event) => startResize("secondary", event));
+
   window.addEventListener("resize", () => {
     document.documentElement.style.setProperty("--sidebar-width", `${getEffectiveSidebarWidth()}px`);
+    document.documentElement.style.setProperty("--secondary-width", `${getEffectiveSecondaryWidth()}px`);
     document.documentElement.style.setProperty("--browser-width", `${getEffectiveBrowserWidth()}px`);
     if (paneTreeMobileMode !== null && paneTreeMobileMode !== isMobileViewport()) {
       renderPaneTree();

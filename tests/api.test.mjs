@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -55,7 +55,7 @@ async function withApp(run) {
       body: init.body === undefined ? undefined : JSON.stringify(init.body)
     });
   try {
-    await run({ base, api, calls, setScreen: (text) => { screenText = text; } });
+    await run({ base, api, calls, dir, setScreen: (text) => { screenText = text; } });
   } finally {
     await app.close();
     await rm(dir, { recursive: true, force: true });
@@ -118,6 +118,61 @@ test("scroll offsets persist per pane between requests", async () => {
     await api("/api/scroll-window", { method: "POST", body: { targetId: "local", windowId: 0, lines: 3 } });
     await api("/api/screen?targetId=local&windowId=0");
     assert.equal(calls.at(-1).payload.scrollOffset, 0);
+  });
+});
+
+test("input history is stored per pane on the server", async () => {
+  await withApp(async ({ api }) => {
+    const pane = { targetId: "mc-tmux", socket: "/tmp/tmux-503/default", windowId: 3 };
+    const query = new URLSearchParams({ targetId: pane.targetId, socket: pane.socket, windowId: "3" });
+    assert.deepEqual((await (await api(`/api/input-history?${query}`)).json()).entries, []);
+    const first = await api("/api/input-history", { method: "POST", body: { ...pane, text: "echo one", line: 10 } });
+    assert.equal(first.status, 200);
+    const second = await (await api("/api/input-history", { method: "POST", body: { ...pane, text: "echo two" } })).json();
+    assert.deepEqual(second.entries.map((entry) => [entry.text, entry.line]), [["echo one", 10], ["echo two", null]]);
+    const listed = await (await api(`/api/input-history?${query}`)).json();
+    assert.equal(listed.entries.length, 2);
+    const otherPane = new URLSearchParams({ targetId: pane.targetId, socket: pane.socket, windowId: "4" });
+    assert.deepEqual((await (await api(`/api/input-history?${otherPane}`)).json()).entries, []);
+    const blank = await api("/api/input-history", { method: "POST", body: { ...pane, text: "   " } });
+    assert.equal(blank.status, 400);
+    const cleared = await api("/api/input-history/delete", { method: "POST", body: pane });
+    assert.equal(cleared.status, 200);
+    assert.deepEqual((await (await api(`/api/input-history?${query}`)).json()).entries, []);
+    const anonymous = await fetch(`${(await api("/api/health")).url.replace(/\/api\/health$/, "")}/api/input-history?${query}`);
+    assert.equal(anonymous.status, 401);
+  });
+});
+
+test("download=1 serves a Browser page unrewritten as an attachment", async () => {
+  await withApp(async ({ base, api, dir }) => {
+    const html = "<!doctype html><html><head><title>报告</title></head><body><img src=\"/abs/x.png\"></body></html>";
+    const filePath = path.join(dir, "报告 v2.html");
+    await writeFile(filePath, html);
+    const url = `file://${filePath}`;
+    const { targets } = await (await api("/api/targets")).json();
+    const local = targets.find((target) => target.transport === "local");
+    const { accessToken } = await (await api(`/api/url-access-token?${new URLSearchParams({ targetId: local.id, url })}`)).json();
+    const query = new URLSearchParams({ targetId: local.id, url, access: accessToken });
+
+    const shown = await fetch(`${base}/api/url-resource?${query}`);
+    assert.equal(shown.status, 200);
+    assert.equal(shown.headers.get("content-disposition"), null);
+    assert.match(await shown.text(), /data-krd-browser-bridge/, "the previewed page is rewritten");
+
+    query.set("download", "1");
+    const saved = await fetch(`${base}/api/url-resource?${query}`);
+    assert.equal(saved.status, 200);
+    assert.equal(saved.headers.get("content-type"), "text/html; charset=utf-8");
+    assert.equal(
+      saved.headers.get("content-disposition"),
+      `attachment; filename="__ v2.html"; filename*=UTF-8''${encodeURIComponent("报告 v2.html")}`
+    );
+    assert.equal(await saved.text(), html, "the download is the file as stored");
+
+    // Without the token or the cookie the download is refused like any resource.
+    query.set("access", "nope");
+    assert.equal((await fetch(`${base}/api/url-resource?${query}`)).status, 401);
   });
 });
 
