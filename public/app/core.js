@@ -67,6 +67,10 @@ const MOBILE_AUTO_CONNECT_DELAY_MS = 1000;
 
 const MAX_IMAGE_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 
+const MAX_VIDEO_ATTACHMENT_BYTES = 100 * 1024 * 1024;
+
+const MAX_ATTACHMENT_COUNT = 10;
+
 const SUPPORTED_IMAGE_TYPES = new Set([
   "image/png",
   "image/jpeg",
@@ -74,6 +78,14 @@ const SUPPORTED_IMAGE_TYPES = new Set([
   "image/gif",
   "image/heic",
   "image/heif"
+]);
+
+const SUPPORTED_VIDEO_TYPES = new Set([
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+  "video/x-matroska",
+  "video/x-m4v"
 ]);
 
 const BROWSER_UTILS = window.KRDBrowserUtils;
@@ -96,6 +108,8 @@ const RESIZE_UTILS = window.KRDResizeUtils;
 const LAYOUT_UTILS = window.KRDLayoutUtils;
 
 const TERMINAL_LINES = window.KRDTerminalLines;
+
+const PANE_FIT = window.KRDPaneFit;
 
 const PANE_LAYOUT_STORAGE_KEY = "kitty-remote-deck.paneLayout.v1";
 
@@ -240,7 +254,7 @@ const state = {
   bottomPanelHeight: PANEL_HEIGHT_RANGE.default,
   // Set by dragging the panel edge: the composer then keeps that height instead of growing with its text.
   bottomPanelPinned: false,
-  imageAttachment: null,
+  imageAttachments: [],
   composerSending: false,
   // Live keys: keydowns in the composer go to the pane as they happen (session only, never persisted).
   liveKeys: false,
@@ -372,6 +386,8 @@ const elements = {
   historyRailClearBtn: document.querySelector("#historyRailClearBtn"),
   historyRailBtn: document.querySelector("#historyRailBtn"),
   fitPaneBtn: document.querySelector("#fitPaneBtn"),
+  hostStats: document.querySelector("#hostStats"),
+  sessionsHostStats: document.querySelector("#sessionsHostStats"),
   zoomPaneBtn: document.querySelector("#zoomPaneBtn"),
   paneTree: document.querySelector("#paneTree"),
   splitRightBtn: document.querySelector("#splitRightBtn"),
@@ -388,10 +404,7 @@ const elements = {
   attachImageBtn: document.querySelector("#attachImageBtn"),
   imageInput: document.querySelector("#imageInput"),
   imageAttachment: document.querySelector("#imageAttachment"),
-  imageAttachmentThumb: document.querySelector("#imageAttachmentThumb"),
-  imageAttachmentName: document.querySelector("#imageAttachmentName"),
-  imageAttachmentInfo: document.querySelector("#imageAttachmentInfo"),
-  removeImageBtn: document.querySelector("#removeImageBtn"),
+  uploadQueue: document.querySelector("#uploadQueue"),
   statusTargetName: document.querySelector("#statusTargetName"),
   statusSocketName: document.querySelector("#statusSocketName"),
   statusMessage: document.querySelector("#statusMessage"),

@@ -318,20 +318,27 @@ let autoFitEpoch = 0;
 
 let externalFitEpoch = -1;
 
+// "deliberate" or "settle" (see modules/pane-fit.js). A deliberate trigger
+// inside the debounce window wins over view-size changes around it.
+let autoFitMode = "deliberate";
+
 function queueAutoFit() {
   if (autoFitTimer) {
     clearTimeout(autoFitTimer);
   }
   autoFitTimer = setTimeout(() => {
     autoFitTimer = null;
+    const mode = autoFitMode;
     if (state.autoFitPane) {
-      fitPaneToScreen().catch((error) => setStatus(error.message, "danger"));
+      fitPaneToScreen({ mode }).catch((error) => setStatus(error.message, "danger"));
     }
   }, 500);
 }
 
-function scheduleAutoFit() {
+function scheduleAutoFit(mode = "deliberate") {
+  const pending = Boolean(autoFitTimer);
   autoFitEpoch += 1;
+  autoFitMode = mode === "settle" && !(pending && autoFitMode === "deliberate") ? "settle" : "deliberate";
   queueAutoFit();
 }
 
@@ -344,13 +351,24 @@ function scheduleExternalFit() {
   queueAutoFit();
 }
 
-function selectedWindowFitsView() {
+function planSelectedPaneFit(mode) {
   const pane = state.flatWindows.find((window) => Number(window.id) === Number(state.selectedWindowId));
   const cells = pane && backendFeature("paneResize") ? measureScreenCells() : null;
   if (!cells) {
-    return true;
+    return null;
   }
-  return (pane.window_columns || pane.columns) === cells.columns && (pane.window_lines || pane.lines) === cells.rows;
+  return PANE_FIT.planPaneFit({
+    windowColumns: pane.window_columns || pane.columns,
+    windowRows: pane.window_lines || pane.lines,
+    viewColumns: cells.columns,
+    viewRows: cells.rows,
+    alternate: Boolean(pane.alternate_on),
+    mode
+  });
+}
+
+function selectedWindowFitsView() {
+  return !planSelectedPaneFit(autoFitMode);
 }
 
 // Window size as reported by a screen capture; it may have changed since the
@@ -382,14 +400,17 @@ async function fitPaneToScreen(options = {}) {
   // Split panes share the window, so the window is what must match the view.
   const windowColumns = pane ? pane.window_columns || pane.columns : 0;
   const windowLines = pane ? pane.window_lines || pane.lines : 0;
+  const mode = options.force ? "force" : options.mode || "deliberate";
+  // Fit pane always asks: on an attached pane it also pins window-size manual.
+  const size = pane && cells ? planSelectedPaneFit(mode) || (options.force ? { columns: cells.columns, rows: cells.rows } : null) : null;
   const skip = !pane || !cells
     ? "no pane or cells"
     : !options.force && (pane.is_attached || pane.osWindowFocused)
       ? "attached"
-      : !options.force && windowColumns === cells.columns && windowLines === cells.rows
+      : !size
         ? "same size"
         : "";
-  reportFitDiagnostics({ skip, cells, windowColumns, windowLines, force: Boolean(options.force) });
+  reportFitDiagnostics({ skip, cells, size, mode, windowColumns, windowLines, force: Boolean(options.force) });
   if (skip) {
     return null;
   }
@@ -401,8 +422,8 @@ async function fitPaneToScreen(options = {}) {
       targetId: state.selectedTargetId,
       socket: state.selectedSocket || "",
       windowId: state.selectedWindowId,
-      columns: cells.columns,
-      rows: cells.rows,
+      columns: size.columns,
+      rows: size.rows,
       force: Boolean(options.force)
     })
   });
@@ -431,6 +452,7 @@ async function fitPaneToScreen(options = {}) {
 // that polls its own pane. Phones show only the active leaf.
 
 function renderViewerMeta() {
+  renderUploadQueue();
   const windowInfo = state.flatWindows.find((window) => Number(window.id) === Number(state.selectedWindowId));
 
   if (!windowInfo) {
@@ -714,7 +736,7 @@ function bindScreenEvents() {
 
   // Sidebar, browser drawer and bottom panel drags change the output box without a window resize.
   if (typeof ResizeObserver === "function") {
-    outputResizeObserver = new ResizeObserver(() => scheduleAutoFit());
+    outputResizeObserver = new ResizeObserver(() => scheduleAutoFit("settle"));
     outputResizeObserver.observe(elements.screenOutput);
   }
 }

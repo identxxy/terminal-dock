@@ -11,53 +11,66 @@ function getImageMimeType(file) {
   return String(file?.type || "").split(";")[0].trim().toLowerCase();
 }
 
+function isVideoMimeType(mimeType) {
+  return SUPPORTED_VIDEO_TYPES.has(mimeType);
+}
+
 function validateImageFile(file) {
   if (!file) {
-    throw new Error("No image selected.");
+    throw new Error("No image or video selected.");
   }
 
   const mimeType = getImageMimeType(file);
-  if (!SUPPORTED_IMAGE_TYPES.has(mimeType)) {
-    throw new Error("Only PNG, JPEG, WebP, GIF, HEIC, or HEIF images are supported.");
+  const isVideo = isVideoMimeType(mimeType);
+  if (!SUPPORTED_IMAGE_TYPES.has(mimeType) && !isVideo) {
+    throw new Error("Only PNG, JPEG, WebP, GIF, HEIC, HEIF images or MP4, MOV, WebM, MKV, M4V videos are supported.");
   }
 
-  if (file.size > MAX_IMAGE_ATTACHMENT_BYTES) {
-    throw new Error(`Image is too large. The current limit is ${Math.floor(MAX_IMAGE_ATTACHMENT_BYTES / 1024 / 1024)} MiB.`);
+  const limit = isVideo ? MAX_VIDEO_ATTACHMENT_BYTES : MAX_IMAGE_ATTACHMENT_BYTES;
+  if (file.size > limit) {
+    throw new Error(`${isVideo ? "Video" : "Image"} is too large. The current limit is ${Math.floor(limit / 1024 / 1024)} MiB.`);
   }
-}
-
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => resolve(String(reader.result || "")), { once: true });
-    reader.addEventListener("error", () => reject(reader.error || new Error("Failed to read image.")), { once: true });
-    reader.readAsDataURL(file);
-  });
-}
-
-function getBase64FromDataUrl(dataUrl) {
-  const marker = ";base64,";
-  const index = dataUrl.indexOf(marker);
-  return index >= 0 ? dataUrl.slice(index + marker.length) : dataUrl;
 }
 
 function renderImageAttachment() {
-  const attachment = state.imageAttachment;
-  elements.bottomPanel.classList.toggle("has-image-attachment", Boolean(attachment));
-  elements.sendForm.classList.toggle("has-image-attachment", Boolean(attachment));
+  const attachments = state.imageAttachments;
+  const hasAttachments = attachments.length > 0;
+  elements.bottomPanel.classList.toggle("has-image-attachment", hasAttachments);
+  elements.sendForm.classList.toggle("has-image-attachment", hasAttachments);
+  elements.imageAttachment.hidden = !hasAttachments;
+  elements.imageAttachment.replaceChildren(...attachments.map((attachment, index) => {
+    const chip = document.createElement("div");
+    chip.className = "image-attachment";
 
-  if (!attachment) {
-    elements.imageAttachment.hidden = true;
-    elements.imageAttachmentThumb.removeAttribute("src");
-    elements.imageAttachmentName.textContent = "image";
-    elements.imageAttachmentInfo.textContent = "Ready";
-    return;
-  }
+    const thumb = document.createElement(attachment.isVideo ? "video" : "img");
+    if (attachment.isVideo) {
+      thumb.muted = true;
+      thumb.playsInline = true;
+      thumb.preload = "metadata";
+    } else {
+      thumb.alt = "";
+    }
+    thumb.src = attachment.previewUrl;
 
-  elements.imageAttachment.hidden = false;
-  elements.imageAttachmentThumb.src = attachment.dataUrl;
-  elements.imageAttachmentName.textContent = attachment.name;
-  elements.imageAttachmentInfo.textContent = `${attachment.type} · ${formatBytes(attachment.size)}`;
+    const meta = document.createElement("div");
+    meta.className = "image-attachment-meta";
+    const name = document.createElement("strong");
+    name.textContent = attachment.name;
+    const info = document.createElement("span");
+    info.textContent = `${attachment.type} · ${formatBytes(attachment.size)}`;
+    meta.append(name, info);
+
+    const remove = document.createElement("button");
+    remove.className = "icon-button image-remove-button";
+    remove.type = "button";
+    remove.dataset.attachmentIndex = String(index);
+    remove.disabled = state.composerSending;
+    remove.setAttribute("aria-label", `Remove ${attachment.name}`);
+    remove.textContent = "×";
+
+    chip.append(thumb, meta, remove);
+    return chip;
+  }));
 }
 
 function renderSpecialKeyMenu() {
@@ -149,7 +162,9 @@ function setComposerBusy(isBusy) {
   elements.sendRawTextBtn.disabled = state.composerSending;
   elements.specialKeyMenuBtn.disabled = state.composerSending;
   elements.attachImageBtn.disabled = state.composerSending;
-  elements.removeImageBtn.disabled = state.composerSending;
+  elements.imageAttachment.querySelectorAll(".image-remove-button").forEach((button) => {
+    button.disabled = state.composerSending;
+  });
   elements.imageInput.disabled = state.composerSending;
   elements.sendTextInput.readOnly = state.composerSending;
   elements.sendTextBtn.classList.toggle("is-sending", state.composerSending);
@@ -159,39 +174,61 @@ function setComposerBusy(isBusy) {
   }
 }
 
-async function attachImageFile(file) {
+async function attachImageFiles(files) {
   if (state.composerSending) {
-    setStatus("Previous input is still sending. Add the image after it finishes.", "neutral");
+    setStatus("Previous input is still sending. Add files after it finishes.", "neutral");
     return;
   }
 
-  validateImageFile(file);
-  const dataUrl = await readFileAsDataUrl(file);
-  state.imageAttachment = {
-    name: file.name || "image",
-    type: getImageMimeType(file),
-    size: file.size,
-    dataUrl,
-    base64: getBase64FromDataUrl(dataUrl)
-  };
+  files.forEach(validateImageFile);
+  if (state.imageAttachments.length + files.length > MAX_ATTACHMENT_COUNT) {
+    throw new Error(`At most ${MAX_ATTACHMENT_COUNT} attachments per send.`);
+  }
+
+  // Files stay as File objects: the upload queue streams them in chunks.
+  for (const file of files) {
+    const type = getImageMimeType(file);
+    const isVideo = isVideoMimeType(type);
+    state.imageAttachments.push({
+      file,
+      name: file.name || (isVideo ? "video" : "image"),
+      type,
+      size: file.size,
+      isVideo,
+      previewUrl: URL.createObjectURL(file)
+    });
+  }
   renderImageAttachment();
-  setStatus(`Image ${state.imageAttachment.name} attached.`, "success");
+  setStatus(files.length === 1 ? `${files[0].name || "File"} attached.` : `${files.length} files attached.`, "success");
+}
+
+function removeImageAttachment(index) {
+  const [removed] = state.imageAttachments.splice(index, 1);
+  if (removed?.previewUrl) {
+    URL.revokeObjectURL(removed.previewUrl);
+  }
+  renderImageAttachment();
 }
 
 function clearImageAttachment() {
-  state.imageAttachment = null;
+  state.imageAttachments.forEach((attachment) => {
+    if (attachment.previewUrl) {
+      URL.revokeObjectURL(attachment.previewUrl);
+    }
+  });
+  state.imageAttachments = [];
   elements.imageInput.value = "";
   renderImageAttachment();
 }
 
-function getImageFileFromDataTransfer(dataTransfer) {
+function getImageFilesFromDataTransfer(dataTransfer) {
   const files = Array.from(dataTransfer?.files || []);
-  return files.find((file) => getImageMimeType(file).startsWith("image/")) || null;
+  return files.filter((file) => /^(image|video)\//.test(getImageMimeType(file)));
 }
 
 function openImagePicker() {
   if (state.composerSending) {
-    setStatus("Previous input is still sending. Add the image after it finishes.", "neutral");
+    setStatus("Previous input is still sending. Add the file after it finishes.", "neutral");
     return;
   }
   elements.imageInput.click();
@@ -239,61 +276,38 @@ async function sendText(options = {}) {
   return true;
 }
 
-async function sendImageAttachment(options = {}) {
+// Attachments, and any text sent while the pane still has messages uploading,
+// go through that pane's upload queue (upload-queue.js) so they arrive in order.
+function queueComposerMessage(options = {}) {
   if (!state.selectedTargetId || !hasSelectedWindow()) {
     setStatus("Select a pane first.", "warning");
     return false;
   }
 
-  const attachment = state.imageAttachment;
-  if (!attachment) {
-    setStatus("Attach an image first.", "warning");
+  const text = elements.sendTextInput.value;
+  const attachments = state.imageAttachments.slice();
+  if (!attachments.length && !text) {
+    setStatus("Type something before sending.", "warning");
     return false;
   }
 
-  const text = elements.sendTextInput.value;
   const pane = captureSelectedPane();
-  setStatus(`Uploading and sending ${attachment.name}...`, "neutral");
-  const data = await apiFetch("/api/send-image", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      targetId: pane.targetId,
-      socket: pane.socket,
-      windowId: pane.windowId,
-      text,
-      imageBase64: attachment.base64,
-      fileName: attachment.name,
-      mimeType: attachment.type,
-      appendNewline: Boolean(options.appendNewline)
-    })
-  });
-
-  setStatus(
-    options.appendNewline
-      ? `Image ${attachment.name} sent and submitted.`
-      : `Image ${attachment.name} sent.`,
-    "success"
-  );
-  recordInputHistory(pane, text);
+  enqueueUploadMessage(pane, { text, appendNewline: options.appendNewline, attachments });
+  setStatus(attachments.length ? `Uploading ${attachments.length === 1 ? attachments[0].name : `${attachments.length} files`} to pane #${pane.windowId}...` : `Queued behind uploads to pane #${pane.windowId}.`, "neutral");
+  if (text) {
+    recordInputHistory(pane, text);
+  }
   elements.sendTextInput.value = "";
   autosizeComposer();
   clearImageAttachment();
-  noteScreenActivity();
-  if (isPaneStillSelected(pane)) {
-    await refreshScreen({ scrollToBottom: true });
-  }
-  return data;
+  return true;
 }
 
 async function sendComposerPayload(options = {}) {
-  return runComposerAction(async () => {
-    if (state.imageAttachment) {
-      return sendImageAttachment(options);
-    }
-
-    return sendText(options);
-  });
+  if (state.imageAttachments.length || hasPendingUploads(captureSelectedPane())) {
+    return queueComposerMessage(options);
+  }
+  return runComposerAction(() => sendText(options));
 }
 
 async function runComposerAction(action) {
@@ -347,7 +361,7 @@ async function sendKey(key, repeat = 1) {
 
 async function sendComposerShortcut() {
   const action = COMPOSER_UTILS.getEnterAction(elements.sendTextInput.value, {
-    hasImage: Boolean(state.imageAttachment)
+    hasImage: state.imageAttachments.length > 0
   });
 
   if (action.type === "send-composer") {
@@ -355,7 +369,7 @@ async function sendComposerShortcut() {
   }
 
   if (action.type === "send-text") {
-    return runComposerAction(() => sendText({ appendNewline: action.appendNewline }));
+    return sendComposerPayload({ appendNewline: action.appendNewline });
   }
 
   if (action.type === "send-key") {
@@ -522,18 +536,22 @@ function bindComposerEvents() {
   elements.attachImageBtn.addEventListener("click", openImagePicker);
 
   elements.imageInput.addEventListener("change", async () => {
-    const file = elements.imageInput.files?.[0];
+    const files = Array.from(elements.imageInput.files || []);
+    elements.imageInput.value = "";
     try {
-      await attachImageFile(file);
+      await attachImageFiles(files);
     } catch (error) {
-      elements.imageInput.value = "";
       setStatus(error.message, "danger");
     }
   });
 
-  elements.removeImageBtn.addEventListener("click", () => {
-    clearImageAttachment();
-    setStatus("Pending image removed.", "neutral");
+  elements.imageAttachment.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-attachment-index]");
+    if (!button || state.composerSending) {
+      return;
+    }
+    removeImageAttachment(Number(button.dataset.attachmentIndex));
+    setStatus("Pending attachment removed.", "neutral");
   });
 
   elements.sendTextInput.addEventListener("input", (event) => {
@@ -545,21 +563,21 @@ function bindComposerEvents() {
   });
 
   elements.sendTextInput.addEventListener("paste", async (event) => {
-    const file = getImageFileFromDataTransfer(event.clipboardData);
-    if (!file) {
+    const files = getImageFilesFromDataTransfer(event.clipboardData);
+    if (!files.length) {
       return;
     }
 
     event.preventDefault();
     try {
-      await attachImageFile(file);
+      await attachImageFiles(files);
     } catch (error) {
       setStatus(error.message, "danger");
     }
   });
 
   elements.sendForm.addEventListener("dragover", (event) => {
-    if (getImageFileFromDataTransfer(event.dataTransfer)) {
+    if (Array.from(event.dataTransfer?.types || []).includes("Files")) {
       event.preventDefault();
       elements.sendForm.classList.add("dragging-image");
     }
@@ -570,15 +588,15 @@ function bindComposerEvents() {
   });
 
   elements.sendForm.addEventListener("drop", async (event) => {
-    const file = getImageFileFromDataTransfer(event.dataTransfer);
-    if (!file) {
+    const files = getImageFilesFromDataTransfer(event.dataTransfer);
+    elements.sendForm.classList.remove("dragging-image");
+    if (!files.length) {
       return;
     }
 
     event.preventDefault();
-    elements.sendForm.classList.remove("dragging-image");
     try {
-      await attachImageFile(file);
+      await attachImageFiles(files);
     } catch (error) {
       setStatus(error.message, "danger");
     }

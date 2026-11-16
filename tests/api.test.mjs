@@ -30,6 +30,7 @@ async function withApp(run) {
         send_key: { ...base, key: payload.key, keys: payload.keys, repeat: payload.repeat },
         focus_window: base,
         toggle_zoom: { ...base, zoomed: true },
+        host_stats: { host: "stub", memTotal: 8, memAvailable: 2, diskPath: "/home/stub", diskTotal: 100, diskFree: 7, checkedAt: "" },
         test: { host: "stub", user: "stub", socketPattern: "", sockets: [], selectedSocket: "", sessionCount: 0, windowCount: 0, checkedAt: "" }
       };
       const reply = replies[action] || { ok: true, action };
@@ -173,6 +174,15 @@ test("download=1 serves a Browser page unrewritten as an attachment", async () =
     // Without the token or the cookie the download is refused like any resource.
     query.set("access", "nope");
     assert.equal((await fetch(`${base}/api/url-resource?${query}`)).status, 401);
+  });
+});
+
+test("host stats come from the helper and are cached per target", async () => {
+  await withApp(async ({ api, calls }) => {
+    const first = await (await api("/api/host-stats?targetId=local")).json();
+    assert.equal(first.memAvailable, 2);
+    await api("/api/host-stats?targetId=local");
+    assert.equal(calls.filter((call) => call.action === "host_stats").length, 1, "second read within 30 s is cached");
   });
 });
 

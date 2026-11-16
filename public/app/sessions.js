@@ -479,6 +479,8 @@ async function loadSessions(options = {}) {
     return;
   }
 
+  // The host can be reachable while its terminal list fails (no tmux server).
+  refreshHostStats().catch(() => {});
   const requestSerial = ++sessionRequestSerial;
   const capturedTargetId = state.selectedTargetId;
   const capturedSocket = state.selectedSocket;

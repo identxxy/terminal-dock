@@ -160,7 +160,7 @@ function clearSessionSelection() {
   state.selectedWindowId = null;
   state.screenText = "";
   state.allTextFollowTail = true;
-  state.imageAttachment = null;
+  clearImageAttachment();
   if (isMobileViewport()) {
     state.mobileScreen = "connect";
     resetMobileStack("connect");

@@ -14,7 +14,7 @@ const { createPreviewAccess } = require("./preview_access");
 const { proxiedResourceFromRequest } = require("./browser_resources");
 const { createStaticServer } = require("./static_files");
 const { createApiHandler } = require("./routes");
-const { MAX_IMAGE_BYTES } = require("./image_upload");
+const { createUploadStore } = require("./image_upload");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
 
@@ -28,8 +28,7 @@ async function createContext(options = {}) {
     port: Number(options.port || 0),
     rootDir: ROOT_DIR,
     publicDir: path.join(ROOT_DIR, "public"),
-    clientDebugLogFile: path.join(tmpDir, "client-debug.log"),
-    maxImageRequestBytes: Math.ceil(MAX_IMAGE_BYTES * 1.6)
+    clientDebugLogFile: path.join(tmpDir, "client-debug.log")
   };
   const authManager = createAuthManager(options.authFile || path.join(dataDir, "auth.json"));
   const targetStore = createTargetStore(path.join(dataDir, "targets.json"));
@@ -55,6 +54,7 @@ async function createContext(options = {}) {
       const resource = proxiedResourceFromRequest(requestUrl);
       return Boolean(resource) && previewAccess.verifyToken(resource.accessToken, resource.targetId, resource.url);
     },
+    uploadStore: createUploadStore(),
     screenCache: createScreenCache(),
     scrollOffsets: new Map(),
     watcherRegistry: new WatcherRegistry()

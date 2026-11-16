@@ -3,7 +3,7 @@ const { backendSupports } = require("../backend_contract");
 const { hashText } = require("../response_encoding");
 const { handleEventStream } = require("../events");
 const { describeScreenDelta, scrollOffsetKey } = require("../screen_cache");
-const { createComposerImageText, uploadImageToTarget } = require("../image_upload");
+const { MAX_UPLOAD_FILES, UPLOAD_CHUNK_BYTES, createComposerImageText } = require("../image_upload");
 const {
   parseCreatePanelKind,
   parseOptionalPositiveInteger,
@@ -11,6 +11,7 @@ const {
   parseRequestBody,
   parseScrollLines,
   parseWindowId,
+  readRawBody,
   sendJson
 } = require("../http_utils");
 
@@ -71,26 +72,43 @@ async function getScreen(ctx, request, response, requestUrl) {
 }
 
 async function sendImage(ctx, request, response) {
-  const body = await parseRequestBody(request, { maxBytes: ctx.config.maxImageRequestBytes });
+  const body = await parseRequestBody(request);
   const target = await ctx.targetStore.resolve(body);
   const windowId = parseWindowId(body.windowId);
-  const image = await uploadImageToTarget(target, {
-    imageBase64: body.imageBase64 || body.dataUrl || "",
-    fileName: body.fileName || "image",
-    mimeType: body.mimeType || ""
-  });
-  const text = createComposerImageText({
-    text: body.text || "",
-    fileName: body.fileName || image.fileName,
-    fileUrl: image.fileUrl
-  });
+  const uploadIds = Array.isArray(body.uploadIds) ? body.uploadIds : [];
+  if (!uploadIds.length || uploadIds.length > MAX_UPLOAD_FILES) {
+    throw new Error(`Send between 1 and ${MAX_UPLOAD_FILES} attachments at a time.`);
+  }
+  const images = ctx.uploadStore.collect(uploadIds, target.id);
+  const text = createComposerImageText({ text: body.text || "", files: images });
   const data = await ctx.runHelper(target, "send_text", {
     socket: body.socket || "",
     windowId,
     text,
     appendNewline: Boolean(body.appendNewline)
   }, HELPER_TIMEOUT_MS);
-  sendJson(response, 200, { ...data, image, sentTextLength: text.length + (body.appendNewline ? 1 : 0) });
+  ctx.uploadStore.forget(uploadIds);
+  sendJson(response, 200, { ...data, image: images[0], images, sentTextLength: text.length + (body.appendNewline ? 1 : 0) });
+}
+
+async function startUpload(ctx, request, response) {
+  const body = await parseRequestBody(request);
+  const target = await ctx.targetStore.resolve(body);
+  sendJson(response, 200, await ctx.uploadStore.start(target, body));
+}
+
+async function uploadChunk(ctx, request, response, requestUrl) {
+  const offset = Number(requestUrl.searchParams.get("offset"));
+  if (!Number.isInteger(offset) || offset < 0) {
+    throw new Error("offset must be a non-negative integer.");
+  }
+  const buffer = await readRawBody(request, UPLOAD_CHUNK_BYTES);
+  sendJson(response, 200, await ctx.uploadStore.appendChunk(requestUrl.searchParams.get("uploadId"), offset, buffer));
+}
+
+async function cancelUpload(ctx, request, response, requestUrl) {
+  await ctx.uploadStore.cancel(requestUrl.searchParams.get("uploadId"));
+  sendJson(response, 200, { ok: true });
 }
 
 // tmux has no per-viewer viewport, so Screen-mode scrolling keeps an offset per
@@ -141,6 +159,9 @@ module.exports = () => [
       appendNewline: Boolean(body.appendNewline)
     }))
   },
+  { method: "POST", path: "/api/uploads", auth: "session", handler: startUpload },
+  { method: "PUT", path: "/api/uploads/chunk", auth: "session", handler: uploadChunk },
+  { method: "DELETE", path: "/api/uploads", auth: "session", handler: cancelUpload },
   { method: "POST", path: "/api/send-image", auth: "session", handler: sendImage },
   {
     method: "POST",

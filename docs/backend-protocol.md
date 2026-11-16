@@ -19,7 +19,7 @@ Every payload carries the target fields below in addition to the action's own fi
 | `socketPattern` | string | optional |
 | `defaultSocket` | string | optional |
 
-A backend must implement: `test`, `list_sessions`, `get_screen`, `scroll_window`, `send_text`, `send_key`, `focus_window`, `create_panel`, `close_panel`. The shared actions (`fetch_url`, `fetch_url_resource`) are implemented once for every backend. `describe_window`, `resize_window` and `toggle_zoom` are optional; the server only calls them for backends that advertise them. The `mock` backend is the reference implementation and what `tests/backend_contract.test.mjs` runs.
+A backend must implement: `test`, `list_sessions`, `get_screen`, `scroll_window`, `send_text`, `send_key`, `focus_window`, `create_panel`, `close_panel`. The shared actions (`fetch_url`, `fetch_url_resource`, `host_stats`) are implemented once for every backend. `describe_window`, `resize_window` and `toggle_zoom` are optional; the server only calls them for backends that advertise them. The `mock` backend is the reference implementation and what `tests/backend_contract.test.mjs` runs.
 
 ## Actions
 
@@ -327,6 +327,28 @@ Payload:
 Result:
 
 A [fetched](#shape-fetched).
+
+### `host_stats`
+
+Memory (Linux MemAvailable; macOS total minus app, wired and compressed) and the disk holding the home directory, in bytes. Backends: shared (any host, no terminal needed).
+
+Payload:
+
+| field | type | |
+| --- | --- | --- |
+
+
+Result:
+
+| field | type | |
+| --- | --- | --- |
+| `host` | string | required |
+| `memTotal` | int | required |
+| `memAvailable` | int | required |
+| `diskPath` | string | required |
+| `diskTotal` | int | required |
+| `diskFree` | int | required |
+| `checkedAt` | string | required |
 
 ## Shapes
 

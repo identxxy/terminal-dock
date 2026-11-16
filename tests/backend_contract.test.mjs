@@ -76,6 +76,14 @@ test("the mock backend follows the action semantics the server relies on", async
   assert.equal(tree[0].tabs[1].windows[1].is_active, false);
 });
 
+test("host_stats reads this host's memory and disk", async () => {
+  const reply = await helper("host_stats");
+  assert.equal(reply.ok, true, reply.error);
+  assert.deepEqual(contract.validateResult("host_stats", reply.data), []);
+  assert.ok(reply.data.memTotal > 0 && reply.data.memAvailable <= reply.data.memTotal);
+  assert.ok(reply.data.diskTotal > 0 && reply.data.diskFree <= reply.data.diskTotal);
+});
+
 test("the helper reports errors through the envelope", async () => {
   assert.deepEqual(await helper("no_such_action"), { ok: false, error: "Unsupported action: no_such_action" });
   // The server refuses unknown backends before spawning; the helper does too, for payloads built elsewhere.

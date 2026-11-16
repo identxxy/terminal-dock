@@ -144,6 +144,12 @@ const ACTIONS = {
     doc: "Same with an HTTP `range` header honoured, for media playback.",
     payload: { url: "string", range: "string?" },
     result: "fetched"
+  },
+  host_stats: {
+    backends: "shared",
+    doc: "Memory (Linux MemAvailable; macOS total minus app, wired and compressed) and the disk holding the home directory, in bytes.",
+    payload: {},
+    result: { host: "string", memTotal: "int", memAvailable: "int", diskPath: "string", diskTotal: "int", diskFree: "int", checkedAt: "string" }
   }
 };
 

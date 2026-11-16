@@ -406,6 +406,49 @@ button {
   font-weight: 600;
 }
 
+/* Memory and disk of the connected host (app/host-stats.js). */
+.host-stats {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.host-stats[hidden] {
+  display: none;
+}
+
+.host-stats-host {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.host-stats-item {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.host-stats-item.warning {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.host-stats-item.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.sessions-host-stats {
+  display: none;
+}
+
 .topbar-controls,
 .topbar-actions {
   justify-content: flex-end;
@@ -1293,6 +1336,101 @@ button {
   flex: 1 1 auto;
 }
 
+.upload-queue {
+  min-width: 0;
+  max-height: 132px;
+  overflow-y: auto;
+  display: grid;
+  gap: 6px;
+}
+
+.upload-queue[hidden] {
+  display: none;
+}
+
+.upload-job {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field-bg);
+}
+
+.upload-job-head {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+}
+
+.upload-job-head strong,
+.upload-job-info {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-job-info {
+  color: var(--muted);
+}
+
+.upload-job[data-status="failed"] .upload-job-info {
+  color: var(--danger, #e5484d);
+}
+
+.upload-job-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.upload-job-actions button {
+  min-height: 24px;
+  padding: 0 8px;
+}
+
+.upload-job-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.upload-job-bar span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.2s linear;
+}
+
+.upload-job[data-status="failed"] .upload-job-bar span {
+  background: var(--danger, #e5484d);
+}
+
+.upload-queue-elsewhere {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.image-attachments {
+  min-width: 0;
+  max-height: 112px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px;
+}
+
+.image-attachments[hidden] {
+  display: none;
+}
+
 .image-attachment {
   min-width: 0;
   display: grid;
@@ -1305,11 +1443,8 @@ button {
   background: var(--field-bg);
 }
 
-.image-attachment[hidden] {
-  display: none;
-}
-
-.image-attachment img {
+.image-attachment img,
+.image-attachment video {
   width: 42px;
   height: 42px;
   object-fit: cover;
@@ -2454,6 +2589,11 @@ textarea::-webkit-scrollbar-thumb:hover {
     display: none;
   }
 
+  .sessions-host-stats:not([hidden]) {
+    display: flex;
+    margin-top: 3px;
+  }
+
   .workbench,
   .app-shell.sidebar-hidden .workbench,
   .app-shell.browser-pinned.preview-open .workbench,
@@ -2754,7 +2894,8 @@ textarea::-webkit-scrollbar-thumb:hover {
     padding: 6px;
   }
 
-  .image-attachment img {
+  .image-attachment img,
+  .image-attachment video {
     width: 38px;
     height: 38px;
   }

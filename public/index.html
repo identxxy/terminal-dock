@@ -10,7 +10,7 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="/styles.css?v=1.1.3" />
+    <link rel="stylesheet" href="/styles.css?v=1.1.9" />
   </head>
   <body>
     <div class="app-shell" id="appShell">
@@ -18,9 +18,10 @@
         <div class="brand-block">
           <img class="brand-mark" src="/icon.svg" alt="" width="28" height="28" />
           <div>
-            <p class="eyebrow">Terminal Dock · v1.1.2</p>
+            <p class="eyebrow">Terminal Dock · v1.1.3</p>
             <h1>Remote Terminal Workbench</h1>
           </div>
+          <p class="host-stats" id="hostStats" hidden></p>
         </div>
 
         <div class="topbar-controls">
@@ -118,6 +119,7 @@
               <div>
                 <p class="section-kicker">Sessions</p>
                 <h2>Session Explorer</h2>
+                <p class="host-stats sessions-host-stats" id="sessionsHostStats" hidden></p>
               </div>
               <div class="sidebar-head-actions">
                 <button class="ghost-button head-text-button" id="saveLayoutBtn" type="button" title="Save the current views, panes and pinned Browser as a named layout">Save layout</button>
@@ -337,7 +339,7 @@
           <section class="bottom-panel" id="bottomPanel">
             <form id="sendForm" class="send-form">
               <div class="composer-toolbar" aria-label="Composer tools">
-                <button class="ghost-button image-action-button composer-tool-button" id="attachImageBtn" type="button" aria-label="Attach image" title="Attach image (paste or drop also works)">
+                <button class="ghost-button image-action-button composer-tool-button" id="attachImageBtn" type="button" aria-label="Attach image or video" title="Attach images or videos (paste or drop also works)">
                   <svg class="image-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
                     <circle cx="8.5" cy="10" r="1.5"></circle>
@@ -370,14 +372,8 @@
                 </button>
               </div>
               <div class="composer-stack" id="composerStack">
-                <div class="image-attachment" id="imageAttachment" hidden>
-                  <img id="imageAttachmentThumb" alt="" />
-                  <div class="image-attachment-meta">
-                    <strong id="imageAttachmentName">image</strong>
-                    <span id="imageAttachmentInfo">Ready</span>
-                  </div>
-                  <button class="icon-button image-remove-button" id="removeImageBtn" type="button" aria-label="Remove image">×</button>
-                </div>
+                <div class="upload-queue" id="uploadQueue" hidden></div>
+                <div class="image-attachments" id="imageAttachment" hidden></div>
                 <div class="chat-input-row">
                   <label class="composer-field">
                     <span class="sr-only">Send text</span>
@@ -390,7 +386,7 @@
                     </svg>
                   </button>
                 </div>
-                <input id="imageInput" type="file" accept="image/*" hidden />
+                <input id="imageInput" type="file" accept="image/*,video/*" multiple hidden />
               </div>
             </form>
           </section>
@@ -522,22 +518,25 @@
     <script src="/modules/ansi-utils.js?v=0.2.1"></script>
     <script src="/modules/input-history.js?v=1.1.2"></script>
     <script src="/modules/pane-order.js?v=1.1.2"></script>
+    <script src="/modules/pane-fit.js?v=1.1.3"></script>
     <!-- app/*.js share one global scope; main.js runs init(). Order matters only for core.js first and main.js last. -->
-    <script src="/app/core.js?v=1.1.4"></script>
+    <script src="/app/core.js?v=1.1.9"></script>
     <script src="/app/debug.js?v=1.1.1"></script>
     <script src="/app/preferences.js?v=1.1.3"></script>
     <script src="/app/mobile.js?v=1.1.3"></script>
-    <script src="/app/shell.js?v=1.1.3"></script>
+    <script src="/app/shell.js?v=1.1.5"></script>
     <script src="/app/browser.js?v=1.1.4"></script>
-    <script src="/app/screen.js?v=1.1.2"></script>
-    <script src="/app/composer.js?v=1.1.2"></script>
-    <script src="/app/targets.js?v=1.1.1"></script>
-    <script src="/app/sessions.js?v=1.1.2"></script>
+    <script src="/app/screen.js?v=1.1.6"></script>
+    <script src="/app/composer.js?v=1.1.5"></script>
+    <script src="/app/upload-queue.js?v=1.1.0"></script>
+    <script src="/app/targets.js?v=1.1.2"></script>
+    <script src="/app/sessions.js?v=1.1.7"></script>
     <script src="/app/session-drag.js?v=1.1.2"></script>
     <script src="/app/history.js?v=1.1.3"></script>
+    <script src="/app/host-stats.js?v=1.1.3"></script>
     <script src="/app/views.js?v=1.1.1"></script>
     <script src="/app/layouts.js?v=1.1.1"></script>
     <script src="/app/live.js?v=1.1.1"></script>
-    <script src="/app/main.js?v=1.1.2"></script>
+    <script src="/app/main.js?v=1.1.6"></script>
   </body>
 </html>

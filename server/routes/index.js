@@ -44,7 +44,8 @@ function createApiHandler(context) {
       const statusCode = error.statusCode || (error.message === "Invalid device token." ? 401 : 400);
       sendJson(response, statusCode, {
         error: error.message || "Unexpected error.",
-        ...(error.layout ? { layout: error.layout } : {})
+        ...(error.layout ? { layout: error.layout } : {}),
+        ...(error.received !== undefined ? { received: error.received } : {})
       });
     }
   };

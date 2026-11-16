@@ -10,6 +10,7 @@ function attachEvents() {
   bindSessionsEvents();
   bindSessionDragEvents();
   bindHistoryEvents();
+  bindHostStatsEvents();
   bindViewsEvents();
   bindLayoutsEvents();
   bindLiveEvents();

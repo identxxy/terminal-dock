@@ -546,6 +546,6 @@ function bindShellEvents() {
     if (paneTreeMobileMode !== null && paneTreeMobileMode !== isMobileViewport()) {
       renderPaneTree();
     }
-    scheduleAutoFit();
+    scheduleAutoFit("settle");
   });
 }

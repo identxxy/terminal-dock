@@ -665,13 +665,13 @@ async function runMobileChatViewport(client, width, height, label) {
         menuLabels: Array.from(document.querySelectorAll('#specialKeyMenuPopover [data-special-key-id]')).map((button) => button.textContent.trim())
       };
 
-      state.imageAttachment = {
+      state.imageAttachments = [{
+        file: new File(['smoke'], 'smoke.png', { type: 'image/png' }),
         name: 'smoke.png',
         type: 'image/png',
-        size: 8,
-        dataUrl: 'data:image/png;base64,c21va2U=',
-        base64: 'c21va2U='
-      };
+        size: 5,
+        previewUrl: ''
+      }];
       renderImageAttachment();
       composer.value = 'look at this';
       const imageBeforeSend = {
@@ -688,17 +688,12 @@ async function runMobileChatViewport(client, width, height, label) {
           .map((item) => item.id),
         panelHasImage: document.querySelector('#bottomPanel').classList.contains('has-image-attachment')
       };
-      const imageSendPromise = sendComposerShortcut();
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      const imageDuringSend = {
-        sendDisabled: document.querySelector('#sendTextBtn').disabled,
-        imageDisabled: document.querySelector('#attachImageBtn').disabled,
-        keyMenuDisabled: document.querySelector('#specialKeyMenuBtn').disabled,
-        sendText: document.querySelector('#sendTextBtn').textContent.trim()
-      };
+      // Attachments go to the pane's upload queue; the composer frees up at once.
+      apiFetch = async () => new Promise(() => {});
       await sendComposerShortcut();
-      imageSendRelease?.();
-      await imageSendPromise;
+      const imageQueue = paneUploadQueue(captureSelectedPane()).map((job) => ({ text: job.text, appendNewline: job.appendNewline, files: job.files.map((item) => item.name) }));
+      const imageQueueVisible = !document.querySelector('#uploadQueue').hidden;
+      paneUploadQueue(captureSelectedPane()).forEach((job) => discardUploadJob(paneQueueKey(captureSelectedPane()), job.id));
       const imageComposer = {
         calls: composerCalls.slice(
           multilineComposer.calls.length +
@@ -708,7 +703,8 @@ async function runMobileChatViewport(client, width, height, label) {
           specialKeyComposer.calls.length
         ),
         beforeSend: imageBeforeSend,
-        duringSend: imageDuringSend,
+        queue: imageQueue,
+        queueVisible: imageQueueVisible,
         valueAfter: composer.value,
         attachmentHidden: document.querySelector('#imageAttachment').hidden,
         panelHasImage: document.querySelector('#bottomPanel').classList.contains('has-image-attachment')
@@ -1031,12 +1027,8 @@ async function runMobileChatViewport(client, width, height, label) {
     mobileFlow.composerEnter.specialKey.menuGeometry.hitInMenu !== true ||
     !mobileFlow.composerEnter.specialKey.menuLabels.includes("Ctrl+A") ||
     !mobileFlow.composerEnter.specialKey.menuLabels.includes("Tab") ||
-    mobileFlow.composerEnter.image.calls.length !== 1 ||
-    mobileFlow.composerEnter.image.calls[0].url !== "/api/send-image" ||
-    mobileFlow.composerEnter.image.calls[0].body.text !== "look at this" ||
-    mobileFlow.composerEnter.image.calls[0].body.fileName !== "smoke.png" ||
-    mobileFlow.composerEnter.image.calls[0].body.mimeType !== "image/png" ||
-    mobileFlow.composerEnter.image.calls[0].body.appendNewline !== true ||
+    JSON.stringify(mobileFlow.composerEnter.image.queue) !== JSON.stringify([{ text: "look at this", appendNewline: true, files: ["smoke.png"] }]) ||
+    mobileFlow.composerEnter.image.queueVisible !== true ||
     mobileFlow.composerEnter.image.beforeSend.panelHasImage !== true ||
     mobileFlow.composerEnter.image.beforeSend.attachment.height <= 0 ||
     mobileFlow.composerEnter.image.beforeSend.input.height <= 0 ||
@@ -1046,10 +1038,6 @@ async function runMobileChatViewport(client, width, height, label) {
     mobileFlow.composerEnter.image.beforeSend.attachment.bottom > mobileFlow.composerEnter.image.beforeSend.input.top ||
     mobileFlow.composerEnter.image.beforeSend.input.bottom > mobileFlow.composerEnter.image.beforeSend.actions.top ||
     mobileFlow.composerEnter.image.beforeSend.actions.bottom > mobileFlow.composerEnter.image.beforeSend.panel.bottom + 1 ||
-    mobileFlow.composerEnter.image.duringSend.sendDisabled !== true ||
-    mobileFlow.composerEnter.image.duringSend.imageDisabled !== true ||
-    mobileFlow.composerEnter.image.duringSend.keyMenuDisabled !== true ||
-    mobileFlow.composerEnter.image.duringSend.sendText !== "Sending" ||
     mobileFlow.composerEnter.image.valueAfter !== "" ||
     mobileFlow.composerEnter.image.attachmentHidden !== true ||
     mobileFlow.composerEnter.image.panelHasImage !== false ||

@@ -9,11 +9,10 @@ import imageUpload from "../server/image_upload.js";
 const {
   createComposerImageText,
   createMarkdownImageReference,
-  decodeImageBase64,
+  createUploadStore,
   getLocalUploadRoot,
   IMAGE_UPLOAD_DIR_ENV,
-  sanitizeFilename,
-  uploadImageToTarget
+  sanitizeFilename
 } = imageUpload;
 
 test("image upload helpers sanitize names and create markdown references", () => {
@@ -25,16 +24,19 @@ test("image upload helpers sanitize names and create markdown references", () =>
   assert.equal(
     createComposerImageText({
       text: "please inspect this",
-      fileName: "plot.png",
-      fileUrl: "file:///tmp/plot.png"
+      files: [{ fileName: "plot.png", fileUrl: "file:///tmp/plot.png" }]
     }),
     "please inspect this\n\n[plot.png](file:///tmp/plot.png)"
   );
-});
-
-test("image upload helpers decode data URLs", () => {
-  const dataUrl = `data:image/png;base64,${Buffer.from("png-bytes").toString("base64")}`;
-  assert.equal(decodeImageBase64(dataUrl).toString("utf8"), "png-bytes");
+  assert.equal(
+    createComposerImageText({
+      files: [
+        { fileName: "a.png", fileUrl: "file:///tmp/a.png" },
+        { fileName: "b.mp4", fileUrl: "file:///tmp/b.mp4" }
+      ]
+    }),
+    "[a.png](file:///tmp/a.png)\n[b.mp4](file:///tmp/b.mp4)"
+  );
 });
 
 test("local image uploads use the configured user-visible root", async (t) => {
@@ -55,17 +57,29 @@ test("local image uploads use the configured user-visible root", async (t) => {
 
   assert.equal(getLocalUploadRoot(), uploadRoot);
 
-  const result = await uploadImageToTarget(
-    { transport: "local" },
-    {
-      imageBase64: Buffer.from("png-bytes").toString("base64"),
-      fileName: "../screen shot.png",
-      mimeType: "image/png"
-    }
-  );
+  const store = createUploadStore();
+  const target = { id: "local", transport: "local" };
+  await assert.rejects(store.start(target, { fileName: "big.png", mimeType: "image/png", size: 9 * 1024 * 1024 }), /too large/);
+  const { uploadId } = await store.start(target, { fileName: "../screen shot.png", mimeType: "image/png", size: 9 });
 
+  assert.deepEqual(await store.appendChunk(uploadId, 0, Buffer.from("png-")), { received: 4, size: 9 });
+  // A resent chunk the server already holds is acknowledged without writing it twice.
+  assert.deepEqual(await store.appendChunk(uploadId, 0, Buffer.from("png-")), { received: 4, size: 9 });
+  await assert.rejects(store.appendChunk(uploadId, 6, Buffer.from("tes")), (error) => error.statusCode === 409 && error.received === 4);
+  assert.throws(() => store.collect([uploadId], "local"), /not fully uploaded/);
+  await store.appendChunk(uploadId, 4, Buffer.from("bytes"));
+  assert.throws(() => store.collect([uploadId], "other"), /different target/);
+
+  const [result] = store.collect([uploadId], "local");
+  store.forget([uploadId]);
+  assert.throws(() => store.collect([uploadId], "local"), /not found/);
   assert.ok(result.path.startsWith(`${uploadRoot}${path.sep}`));
   assert.match(path.basename(result.path), /^\d{14}-[a-z0-9]{6}-screen-shot\.png$/);
   assert.equal(await fs.readFile(result.path, "utf8"), "png-bytes");
   assert.ok(result.fileUrl.startsWith("file://"));
+
+  const cancelled = await store.start(target, { fileName: "clip.mp4", mimeType: "video/mp4", size: 50 * 1024 * 1024 });
+  await store.appendChunk(cancelled.uploadId, 0, Buffer.from("partial"));
+  await store.cancel(cancelled.uploadId);
+  assert.deepEqual((await fs.readdir(path.dirname(result.path))).length, 1);
 });

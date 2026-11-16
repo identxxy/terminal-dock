@@ -47,6 +47,19 @@ function sendStream(response, statusCode, stream, contentType, headers = {}) {
   stream.pipe(response);
 }
 
+async function readRawBody(request, maxBytes) {
+  const chunks = [];
+  let totalBytes = 0;
+  for await (const chunk of request) {
+    totalBytes += chunk.length;
+    if (totalBytes > maxBytes) {
+      throw Object.assign(new Error(`Request body is too large. Limit is ${Math.floor(maxBytes / 1024 / 1024)} MiB.`), { statusCode: 413 });
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
 async function parseRequestBody(request, options = {}) {
   const chunks = [];
   let totalBytes = 0;
@@ -133,6 +146,7 @@ module.exports = {
   parseOptionalPositiveInteger,
   parsePositiveInteger,
   parseRequestBody,
+  readRawBody,
   parseScrollLines,
   parseWindowId,
   sendBuffer,

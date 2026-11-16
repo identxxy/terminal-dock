@@ -1496,6 +1496,54 @@ MOCK_ACTIONS = {
 }
 
 
+def host_memory():
+    # (total, available) in bytes. Linux: MemAvailable, what the kernel can
+    # hand out without swapping. macOS: total minus app, wired and compressed
+    # memory, the "Memory Used" Activity Monitor shows.
+    try:
+        info = {}
+        with open("/proc/meminfo", encoding="utf-8") as handle:
+            for line in handle:
+                key, _, rest = line.partition(":")
+                info[key] = int(rest.split()[0]) * 1024
+        return info["MemTotal"], info.get("MemAvailable", info.get("MemFree", 0))
+    except (OSError, KeyError, ValueError, IndexError):
+        pass
+    if sys.platform == "darwin":
+        total = int(subprocess.run(["sysctl", "-n", "hw.memsize"], stdout=subprocess.PIPE, text=True, check=False).stdout.strip() or 0)
+        output = subprocess.run(["vm_stat"], stdout=subprocess.PIPE, text=True, check=False).stdout
+        page_size = 4096
+        pages = {}
+        for line in output.splitlines():
+            if "page size of" in line:
+                page_size = int(line.split("page size of")[1].split()[0])
+                continue
+            key, _, value = line.partition(":")
+            value = value.strip().rstrip(".")
+            if value.isdigit():
+                pages[key.strip()] = int(value)
+        app = pages.get("Anonymous pages", pages.get("Pages active", 0)) - pages.get("Pages purgeable", 0)
+        used = (max(app, 0) + pages.get("Pages wired down", 0) + pages.get("Pages occupied by compressor", 0)) * page_size
+        return total, max(total - used, 0)
+    return 0, 0
+
+
+def action_host_stats():
+    # Memory and the disk that holds the home directory, for the top bar.
+    mem_total, mem_available = host_memory()
+    disk_path = os.path.expanduser("~")
+    disk = shutil.disk_usage(disk_path)
+    return {
+        "host": socket_module.gethostname(),
+        "memTotal": int(mem_total),
+        "memAvailable": int(mem_available),
+        "diskPath": disk_path,
+        "diskTotal": int(disk.total),
+        "diskFree": int(disk.free),
+        "checkedAt": utc_now(),
+    }
+
+
 # Backend registry. SHARED_ACTIONS work on any host; a backend adds its own
 # action table under its name, selected by PAYLOAD["backend"]. A new backend
 # (zellij, screen, a plain PTY) is one more table here with the same action
@@ -1503,6 +1551,7 @@ MOCK_ACTIONS = {
 SHARED_ACTIONS = {
     "fetch_url": action_fetch_url,
     "fetch_url_resource": action_fetch_url_resource,
+    "host_stats": action_host_stats,
 }
 
 KITTY_ACTIONS = {
