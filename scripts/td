@@ -1,17 +1,38 @@
 #!/usr/bin/env python3
 """td - pick a tmux session on any of your hosts and attach to it.
 
-The same sessions the kitty-remote-deck tmux targets show, from a terminal:
+The same sessions the terminal-dock tmux targets show, from a terminal:
 local tmux plus every host in ~/.config/td/hosts, reached over ssh.
 
   td                      interactive picker (Enter attach, n new, x kill, r refresh, q quit)
-  td ls                   print the table and exit
+  td ls [HOST...] [--json] print the table (or JSON with every pane) and exit
+  td cat HOST:TARGET      print a pane's text; TARGET is a pane id (%12),
+                          SESSION[:WINDOW[.PANE]], or /TEXT for the one pane whose
+                          title contains TEXT; --lines N adds up to N lines of
+                          history, --all the whole history, --json adds metadata
   td HOST[:SESSION]       attach directly (HOST is an alias from the hosts file or "local")
   td new HOST [NAME]      create a session on HOST and attach
   td img [HOST[:SESSION]] upload the clipboard image to HOST and paste its link into
                           the session's active pane; without arguments, the session the
                           focused kitty window is attached to (bind it to a kitty key:
                           map ctrl+shift+u launch --type=background td img)
+
+  td send HOST:TARGET TEXT  paste TEXT ("-" reads stdin) into a pane, prefixed with
+                          "[td from HOST:PANE]"; --enter submits it. Only to panes
+                          whose foreground program is Claude Code or Codex; refused
+                          (exit 3) otherwise, when a terminal or the dock is attached
+                          (--force), when the pane is your own, in copy mode, or the
+                          text has control characters; --raw drops the prefix.
+                          Every send is appended to the target host's
+                          ~/.local/state/terminal-dock/audit.jsonl
+
+  td harbor activate HOST:TARGET   (Harbor server) store the policy JSON from stdin
+                          for the pane's next Harbor request; exit 4 while the agent
+                          is busy. td harbor deactivate HOST:TARGET drops it, and
+                          td harbor fetch HOST REQUEST prints the agent's reply and
+                          tool calls once its turn ends ({"done": false} before).
+  td hooks install|uninstall|status   add td-hook to ~/.claude/settings.json
+                          (shows the diff and asks first; keeps a backup)
 
   --tab                   open the attach in a new kitty tab instead of this terminal
   --socket NAME           use tmux -L NAME on every host
@@ -22,6 +43,7 @@ Hosts file: one host per line, "alias [display name]"; "local" is this machine.
 
 import argparse
 import concurrent.futures
+import hashlib
 import curses
 import json
 import os
@@ -37,10 +59,19 @@ SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=6"]
 SEP = "␟"
 # Non-interactive ssh shells skip rc files, so Homebrew/user tmux is not on PATH.
 PATH_PREFIX = 'PATH="$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin"; '
+PANE_FIELDS = [
+    "session_name", "window_active", "pane_active", "pane_current_command", "pane_current_path", "window_activity",
+    "pane_id", "window_index", "window_name", "pane_index", "pane_width", "pane_height", "alternate_on", "pane_title",
+]
+ESCAPE = re.compile(r"\x1b\[([0-9;:]*)([A-Za-z])|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b.")
+# Input-box prompts of Claude Code (❯) and Codex (›); a suggested next prompt
+# is drawn dim after them and is not something the user typed.
+PROMPT_MARKERS = ("❯", "›")
+CAT_FIELDS = ["pane_id", "session_name", "window_index", "pane_index", "pane_width", "pane_height", "cursor_x", "cursor_y", "alternate_on", "history_size", "pane_current_command"]
 LIST_SCRIPT = (
     PATH_PREFIX + "tmux {sock} list-sessions -F '#{{session_name}}{sep}#{{session_windows}}{sep}#{{session_attached}}{sep}#{{session_activity}}' 2>/dev/null; "
     "echo '--panes--'; "
-    "tmux {sock} list-panes -a -F '#{{session_name}}{sep}#{{window_active}}{sep}#{{pane_active}}{sep}#{{pane_current_command}}{sep}#{{pane_current_path}}{sep}#{{window_activity}}' 2>/dev/null; "
+    "tmux {sock} list-panes -a -F '" + "{sep}".join(f"#{{{{{field}}}}}" for field in PANE_FIELDS) + "' 2>/dev/null; "
     "true"
 )
 
@@ -80,26 +111,45 @@ def list_host(alias, display, socket):
     if completed.returncode != 0:
         error = completed.stderr.strip().splitlines()
         return {"alias": alias, "display": display, "error": error[-1] if error else f"exit {completed.returncode}", "sessions": []}
-    sessions, panes, activity = [], {}, {}
+    sessions, panes = [], {}
     in_panes = False
     for line in completed.stdout.splitlines():
         if line == "--panes--":
             in_panes = True
             continue
-        fields = line.split(SEP)
         if in_panes:
-            if len(fields) == 6:
-                # Pane output updates window_activity; session_activity only tracks clients.
-                activity[fields[0]] = max(activity.get(fields[0], 0), int(fields[5] or 0))
-                if fields[1] == "1" and fields[2] == "1":
-                    panes[fields[0]] = (fields[3], fields[4])
-        elif len(fields) == 4:
+            # The title is last, so a separator inside it cannot shift the other fields.
+            fields = line.split(SEP, len(PANE_FIELDS) - 1)
+            if len(fields) == len(PANE_FIELDS):
+                panes.setdefault(fields[0], []).append(dict(zip(PANE_FIELDS, fields)))
+            continue
+        fields = line.split(SEP)
+        if len(fields) == 4:
             sessions.append({"name": fields[0], "windows": int(fields[1] or 0), "attached": int(fields[2] or 0), "activity": int(fields[3] or 0)})
     for session in sessions:
-        command, path = panes.get(session["name"], ("", ""))
-        session["command"] = command
-        session["path"] = path
-        session["activity"] = max(session["activity"], activity.get(session["name"], 0))
+        session_panes = panes.get(session["name"], [])
+        active = next((pane for pane in session_panes if pane["window_active"] == "1" and pane["pane_active"] == "1"), {})
+        session["command"] = active.get("pane_current_command", "")
+        session["path"] = active.get("pane_current_path", "")
+        session["title"] = active.get("pane_title", "")
+        # Pane output updates window_activity; session_activity only tracks clients.
+        session["activity"] = max([session["activity"]] + [int(pane["window_activity"] or 0) for pane in session_panes])
+        session["panes"] = [
+            {
+                "id": pane["pane_id"],
+                "window": int(pane["window_index"] or 0),
+                "windowName": pane["window_name"],
+                "index": int(pane["pane_index"] or 0),
+                "active": pane["window_active"] == "1" and pane["pane_active"] == "1",
+                "command": pane["pane_current_command"],
+                "cwd": pane["pane_current_path"],
+                "title": pane["pane_title"],
+                "width": int(pane["pane_width"] or 0),
+                "height": int(pane["pane_height"] or 0),
+                "alternate": pane["alternate_on"] == "1",
+            }
+            for pane in session_panes
+        ]
     return {"alias": alias, "display": display, "error": "", "sessions": sessions}
 
 
@@ -149,6 +199,9 @@ def format_session(session, width):
     mark = "●" if session["attached"] else "○"
     left = f"  {mark} {session['name']:<18.18} {session['windows']:>2}w  {relative(session['activity']):>4}  "
     right = f"{session['command']}  {short_path(session['path'])}"
+    # Last, since wide characters in titles would break column alignment.
+    if session.get("title"):
+        right += f"  · {session['title']}"
     return (left + right)[:width]
 
 
@@ -307,6 +360,367 @@ def image_command(args, hosts, socket):
     print(f"sent {len(data)} bytes to {alias}:{result[0]} as {result[1]}")
 
 
+def plain_line(line):
+    """Strip escapes from a captured line; on a prompt line, also drop trailing dim text (a suggestion)."""
+    parts, dim = [], False
+    for match in re.finditer(r"([^\x1b]+)|" + ESCAPE.pattern, line):
+        if match.group(1):
+            parts.append((match.group(1), dim))
+        elif match.group(3) == "m":
+            params = [int(p) if p.isdigit() else 0 for p in re.split("[;:]", match.group(2))]
+            index = 0
+            while index < len(params):
+                code = params[index]
+                if code in (38, 48, 58) and index + 1 < len(params):
+                    index += 3 if params[index + 1] == 5 else 5 if params[index + 1] == 2 else 1
+                    continue
+                dim = True if code == 2 else False if code in (0, 22) else dim
+                index += 1
+    text = "".join(part for part, _ in parts)
+    if text.lstrip().startswith(PROMPT_MARKERS):
+        while parts and (parts[-1][1] or not parts[-1][0].strip()):
+            parts.pop()
+        text = "".join(part for part, _ in parts)
+    return text.rstrip()
+
+
+def capture_pane(alias, target, socket, lines, whole):
+    """Plain text of a tmux pane, without suggested prompts, plus its metadata."""
+    sock = f"-L {shlex.quote(socket)}" if socket else ""
+    quoted = shlex.quote(target)
+    start = "-S -" if whole else f"-S -{lines}" if lines else ""
+    script = PATH_PREFIX + (
+        f"tmux {sock} display-message -p -t {quoted} '" + SEP.join(f"#{{{field}}}" for field in CAT_FIELDS) + "' "
+        f"&& tmux {sock} capture-pane -p -e -J {start} -t {quoted}"
+    )
+    try:
+        completed = subprocess.run(remote_command(alias, script), capture_output=True, timeout=30, check=False)
+    except subprocess.TimeoutExpired:
+        return None, "timed out"
+    if completed.returncode != 0:
+        error = completed.stderr.decode(errors="replace").strip().splitlines()
+        return None, error[-1] if error else f"exit {completed.returncode}"
+    head, _, body = completed.stdout.decode(errors="replace").partition("\n")
+    meta = dict(zip(CAT_FIELDS, head.split(SEP)))
+    # -J keeps trailing cells as spaces; drop them and the blank rows below the cursor.
+    text_lines = [plain_line(line) for line in body.split("\n")]
+    while text_lines and not text_lines[-1]:
+        text_lines.pop()
+    if lines and not whole:
+        text_lines = text_lines[-lines:]
+    number = lambda key: int(meta.get(key) or 0)
+    return {
+        "host": alias,
+        "pane": meta.get("pane_id", ""),
+        "session": meta.get("session_name", ""),
+        "window": number("window_index"),
+        "index": number("pane_index"),
+        "command": meta.get("pane_current_command", ""),
+        "size": {"width": number("pane_width"), "height": number("pane_height")},
+        "cursor": {"x": number("cursor_x"), "y": number("cursor_y")},
+        "alternate": meta.get("alternate_on") == "1",
+        "historyLines": number("history_size"),
+        "text": "\n".join(text_lines),
+    }, ""
+
+
+def pane_by_title(alias, text, socket):
+    result = list_host(alias, alias, socket)
+    if result["error"]:
+        sys.exit(f"{alias}: {result['error']}")
+    panes = [(session["name"], pane) for session in result["sessions"] for pane in session["panes"]]
+    matches = [(name, pane) for name, pane in panes if text.casefold() in pane["title"].casefold()]
+    if len(matches) == 1:
+        return matches[0][1]["id"]
+    listing = "\n".join(f"  {pane['id']:<5} {name:<12} {pane['title']}" for name, pane in (matches or panes))
+    sys.exit(f"{alias}: {'no' if not matches else len(matches)} pane titles match {text!r}:\n{listing}")
+
+
+def cat_command(args, aliases, options):
+    if len(args) != 2 or ":" not in args[1]:
+        sys.exit("usage: td cat HOST:TARGET [--lines N | --all] [--json]")
+    alias, _, target = args[1].partition(":")
+    if alias not in aliases:
+        sys.exit(f"unknown host {alias}; known: {', '.join(sorted(aliases))}")
+    if not target:
+        sys.exit("missing TARGET: a pane id (%12), SESSION[:WINDOW[.PANE]] or /TITLE-TEXT")
+    if target.startswith("/"):
+        target = pane_by_title(alias, target[1:], options.socket)
+    result, error = capture_pane(alias, target, options.socket, options.lines, options.all)
+    if not result:
+        sys.exit(f"{alias}: {error}")
+    if options.json:
+        print(json.dumps(result, ensure_ascii=False))
+    else:
+        print(result["text"])
+
+
+SEND_MAX_CHARS = 8000
+# Tabs and newlines are fine inside a bracketed paste; every other control
+# character (ESC above all) could drive the target program.
+SEND_FORBIDDEN = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+EXIT_REFUSED = 3
+# Text pasted into a shell runs as commands, so td send only writes to an agent:
+# the leader of the pane's foreground process group must be one of these.
+AGENT_PROGRAM = re.compile(r"(?:^|/)-?(claude|codex)(?:\.js)?$")
+AGENT_PACKAGE = re.compile(r"@anthropic-ai/claude-code|@openai/codex")
+# Claude Code and Codex fold long pastes into a placeholder instead of showing them.
+PASTE_PLACEHOLDER = re.compile(r"\[Pasted (?:text|Content)", re.IGNORECASE)
+
+
+def foreground_agent(ps_lines):
+    """'claude'/'codex' when the foreground group's leader is that agent, else its command."""
+    for line in ps_lines:
+        parts = line.split(None, 2)
+        if len(parts) == 3 and parts[0] == parts[1]:
+            args = parts[2].split()
+            # npm installs run as `node .../@anthropic-ai/claude-code/cli.js`.
+            runtime = os.path.basename(args[0]) in ("node", "bun")
+            for word in args[:2] if runtime else args[:1]:
+                match = AGENT_PROGRAM.search(word)
+                if match:
+                    return match.group(1), parts[2]
+            if runtime and AGENT_PACKAGE.search(parts[2]):
+                return ("claude" if "claude" in parts[2] else "codex"), parts[2]
+            return "", parts[2]
+    return "", ""
+
+
+def refuse(options, reason):
+    if options.json:
+        print(json.dumps({"sent": False, "refused": reason}, ensure_ascii=False))
+    else:
+        print(f"td send refused: {reason}", file=sys.stderr)
+    sys.exit(EXIT_REFUSED)
+
+
+def local_name(hosts):
+    return next((display for alias, display in hosts if alias == "local"), os.uname().nodename.split(".")[0])
+
+
+def send_command(args, hosts, aliases, options):
+    if len(args) != 3 or ":" not in args[1]:
+        sys.exit("usage: td send HOST:TARGET TEXT|- [--enter] [--force] [--raw] [--json]")
+    alias, _, target = args[1].partition(":")
+    if alias not in aliases:
+        sys.exit(f"unknown host {alias}; known: {', '.join(sorted(aliases))}")
+    text = sys.stdin.read() if args[2] == "-" else args[2]
+    if options.enter:
+        text = text.rstrip("\n")
+    if not text and not options.enter:
+        sys.exit("nothing to send")
+    if len(text) > SEND_MAX_CHARS:
+        refuse(options, f"text is {len(text)} characters; the limit is {SEND_MAX_CHARS}")
+    if SEND_FORBIDDEN.search(text):
+        refuse(options, "text contains control characters; only printable text, tabs and newlines are sent")
+    if target.startswith("/"):
+        target = pane_by_title(alias, target[1:], options.socket)
+
+    sock = f"-L {shlex.quote(options.socket)}" if options.socket else ""
+    quoted = shlex.quote(target)
+    probe = PATH_PREFIX + (
+        f"hostname; tmux {sock} display-message -p -t {quoted} '#{{pane_id}}{SEP}#{{session_name}}{SEP}#{{pane_in_mode}}{SEP}#{{pane_tty}}' "
+        f"&& tmux {sock} list-clients -t \"$(tmux {sock} display-message -p -t {quoted} '#{{session_name}}')\" -F 'client{SEP}#{{client_control_mode}}' "
+        f"&& t=$(tmux {sock} display-message -p -t {quoted} '#{{pane_tty}}') && ps -t \"${{t#/dev/}}\" -o pid= -o tpgid= -o args="
+    )
+    completed = subprocess.run(remote_command(alias, probe), capture_output=True, timeout=30, check=False)
+    if completed.returncode != 0:
+        error = completed.stderr.decode(errors="replace").strip().splitlines()
+        sys.exit(f"{alias}: {error[-1] if error else f'exit {completed.returncode}'}")
+    lines = completed.stdout.decode(errors="replace").splitlines()
+    remote_host, (pane, session, in_mode, _tty) = lines[0], lines[1].split(SEP)
+    clients = [line.split(SEP)[1] for line in lines[2:] if line.startswith(f"client{SEP}")]
+    terminals, docks = clients.count("0"), clients.count("1")
+    agent, foreground = foreground_agent([line for line in lines[2:] if not line.startswith(f"client{SEP}")])
+
+    me = os.environ.get("TMUX_PANE", "")
+    if me and pane == me and remote_host == os.uname().nodename:
+        refuse(options, f"{alias}:{pane} is the pane this command runs in")
+    if not agent:
+        refuse(options, f"{alias}:{pane} runs {foreground or 'nothing'!r}, not Claude Code or Codex; td send only writes to agents")
+    if in_mode == "1":
+        refuse(options, f"{alias}:{pane} is in copy mode; text would not reach the program")
+    if (terminals or docks) and not options.force:
+        refuse(options, f"{alias}:{session} is attached ({terminals} terminal, {docks} dock); someone may be typing there, use --force only when the user asked for this pane")
+
+    sender = f"{local_name(hosts)}:{me or '-'}"
+    body = text if options.raw else f"{options.prefix or f'[td from {sender}]'} {text}"
+    record = json.dumps({
+        "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "from": sender, "to": f"{session}:{pane}", "agent": agent,
+        "chars": len(body), "sha256": hashlib.sha256(body.encode()).hexdigest()[:16], "preview": body[:80],
+        "enter": options.enter, "force": options.force, "raw": options.raw,
+    }, ensure_ascii=False)
+    def run(script, data=b""):
+        completed = subprocess.run(remote_command(alias, PATH_PREFIX + script), input=data, capture_output=True, timeout=30, check=False)
+        if completed.returncode != 0:
+            error = completed.stderr.decode(errors="replace").strip().splitlines()
+            sys.exit(f"{alias}: {error[-1] if error else f'exit {completed.returncode}'}")
+        return completed.stdout.decode(errors="replace")
+
+    # A dialog or menu (trust prompt, update offer) swallows the paste and would
+    # take the Enter as "pick the highlighted option". So Enter is only pressed
+    # once the text shows up on screen, i.e. it landed in an input box.
+    marker = body.split("\n", 1)[0][:40]
+    seen = lambda screen: screen.count(marker) + len(PASTE_PLACEHOLDER.findall(screen))
+    screen = f"tmux {sock} capture-pane -p -J -t {shlex.quote(pane)}"
+    before = seen(run(screen)) if options.enter and body and not options.raw else 0
+    buffer = f"td-send-{os.getpid()}"
+    run(f"tmux {sock} load-buffer -b {buffer} - && tmux {sock} paste-buffer -d -p -b {buffer} -t {shlex.quote(pane)}" if body else "true", body.encode())
+    entered = False
+    if options.enter:
+        landed = True
+        if body and not options.raw:
+            # Let the program take the paste before looking, or it may still be arriving.
+            deadline = time.time() + 2
+            while True:
+                time.sleep(0.3)
+                landed = seen(run(screen)) > before
+                if landed or time.time() > deadline:
+                    break
+        if landed:
+            run(f"tmux {sock} send-keys -t {shlex.quote(pane)} Enter")
+            entered = True
+    record = json.dumps({**json.loads(record), "entered": entered}, ensure_ascii=False)
+    run('d="$HOME/.local/state/terminal-dock"; mkdir -p "$d" && ' f'printf "%s\\n" {shlex.quote(record)} >> "$d/audit.jsonl"')
+    if options.enter and not entered:
+        refuse(options, f"{alias}:{pane} did not show the pasted text, so it is probably on a dialog or menu; Enter was not pressed. td cat it and tell the user")
+    result = {"sent": True, "host": alias, "pane": pane, "session": session, "agent": agent, "chars": len(body), "enter": entered}
+    print(json.dumps(result, ensure_ascii=False) if options.json else f"sent {len(body)} characters to {agent} in {alias}:{session} ({pane})")
+
+
+EXIT_BUSY = 4
+# Runs on the target host with the state directory td-hook uses.
+HARBOR_REMOTE = r"""
+import json, os, sys, time
+state = os.path.expanduser("~/.local/state/terminal-dock")
+action, key = sys.argv[1], sys.argv[2]
+active = os.path.join(state, "harbor", "active", key + ".json")
+if action == "activate":
+    pane = {}
+    try:
+        pane = json.load(open(os.path.join(state, "panes", key + ".json")))
+    except (OSError, ValueError):
+        pass
+    if not pane:
+        # No state means td-hook has never run here: nothing would enforce the policy.
+        print(json.dumps({"error": "td-hook is not active in this pane (td hooks install; the agent must handle one prompt after that)"}))
+        sys.exit(5)
+    if pane.get("status") != "idle":
+        print(json.dumps({"busy": pane.get("status")}))
+        sys.exit(4)
+    if os.path.exists(active):
+        print(json.dumps({"busy": "harbor"}))
+        sys.exit(4)
+    os.makedirs(os.path.dirname(active), exist_ok=True)
+    policy = json.load(sys.stdin)
+    policy["roots"] = [os.path.expanduser(root) for root in policy.get("roots") or [pane.get("cwd") or "~"]]
+    with open(active + ".tmp", "w") as handle:
+        json.dump(policy, handle)
+    os.replace(active + ".tmp", active)
+    print(json.dumps({"activated": True, "roots": policy["roots"]}))
+elif action == "deactivate":
+    if os.path.exists(active):
+        os.remove(active)
+    print(json.dumps({"deactivated": True}))
+elif action == "fetch":
+    reply_file = os.path.join(state, "harbor", "replies", key + ".json")
+    events_file = os.path.join(state, "harbor", "events", key + ".jsonl")
+    if not os.path.exists(reply_file):
+        print(json.dumps({"done": False}))
+        sys.exit(0)
+    result = json.load(open(reply_file))
+    result["done"] = True
+    result["events"] = [json.loads(line) for line in open(events_file)] if os.path.exists(events_file) else []
+    print(json.dumps(result))
+    for path in (reply_file, events_file):
+        if os.path.exists(path):
+            os.remove(path)
+"""
+
+
+def harbor_command(args, aliases, options):
+    usage = "usage: td harbor activate|deactivate HOST:TARGET  |  td harbor fetch HOST REQUEST"
+    if len(args) < 3 or args[1] not in ("activate", "deactivate", "fetch"):
+        sys.exit(usage)
+    action = args[1]
+    if action == "fetch":
+        if len(args) != 4:
+            sys.exit(usage)
+        alias, key = args[2], args[3]
+    else:
+        alias, _, target = args[2].partition(":")
+        if not target:
+            sys.exit(usage)
+        if target.startswith("/"):
+            target = pane_by_title(alias, target[1:], options.socket)
+        result, error = capture_pane(alias, target, options.socket, 0, False)
+        if not result:
+            sys.exit(f"{alias}: {error}")
+        key = result["pane"].lstrip("%")
+    if alias not in aliases:
+        sys.exit(f"unknown host {alias}; known: {', '.join(sorted(aliases))}")
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", key):
+        sys.exit(f"bad key {key!r}")
+    data = sys.stdin.read().encode() if action == "activate" else b""
+    command = PATH_PREFIX + f"python3 -c {shlex.quote(HARBOR_REMOTE)} {action} {key}"
+    completed = subprocess.run(remote_command(alias, command), input=data, capture_output=True, timeout=30, check=False)
+    sys.stdout.write(completed.stdout.decode(errors="replace"))
+    if completed.returncode not in (0, EXIT_BUSY, 5):
+        error = completed.stderr.decode(errors="replace").strip().splitlines()
+        sys.exit(f"{alias}: {error[-1] if error else f'exit {completed.returncode}'}")
+    sys.exit(completed.returncode)
+
+
+HOOK_EVENTS = ["UserPromptSubmit", "PreToolUse", "Notification", "Stop", "SessionEnd"]
+
+
+def hooks_command(args):
+    """Add (or remove) td-hook for every event in ~/.claude/settings.json."""
+    action = args[1] if len(args) > 1 else "status"
+    settings_file = os.path.expanduser("~/.claude/settings.json")
+    hook = shutil.which("td-hook") or os.path.join(os.path.dirname(os.path.realpath(__file__)), "td-hook")
+    try:
+        with open(settings_file, encoding="utf-8") as handle:
+            original = handle.read()
+    except FileNotFoundError:
+        original = "{}"
+    settings = json.loads(original or "{}")
+    hooks = settings.setdefault("hooks", {})
+    is_ours = lambda entry: any(os.path.basename(item.get("command", "").split()[0] if item.get("command") else "") == "td-hook" for item in entry.get("hooks", []))
+    installed = {event: any(is_ours(entry) for entry in hooks.get(event, [])) for event in HOOK_EVENTS}
+    if action == "status":
+        print(json.dumps({"settings": settings_file, "hook": hook, "installed": installed}))
+        return
+    if action not in ("install", "uninstall"):
+        sys.exit("usage: td hooks install|uninstall|status")
+    for event in HOOK_EVENTS:
+        entries = [entry for entry in hooks.get(event, []) if not is_ours(entry)]
+        if action == "install":
+            entries.append({"matcher": "*", "hooks": [{"type": "command", "command": hook}]} if event == "PreToolUse"
+                           else {"hooks": [{"type": "command", "command": hook}]})
+        if entries:
+            hooks[event] = entries
+        else:
+            hooks.pop(event, None)
+    if not hooks:
+        settings.pop("hooks")
+    updated = json.dumps(settings, indent=2, ensure_ascii=False) + "\n"
+    if updated == original:
+        print("no change")
+        return
+    import difflib
+    sys.stdout.writelines(difflib.unified_diff(original.splitlines(True), updated.splitlines(True), settings_file, settings_file + " (new)"))
+    if input(f"\n{action} td-hook in {settings_file}? [y/N] ").strip().lower() != "y":
+        print("unchanged")
+        return
+    backup = f"{settings_file}.bak-td-{time.strftime('%Y%m%d%H%M%S')}"
+    with open(backup, "w", encoding="utf-8") as handle:
+        handle.write(original)
+    with open(settings_file, "w", encoding="utf-8") as handle:
+        handle.write(updated)
+    print(f"{action}ed; backup at {backup}")
+
+
 def kill_session(alias, name, socket):
     sock = f"-L {shlex.quote(socket)}" if socket else ""
     subprocess.run(remote_command(alias, PATH_PREFIX + f"tmux {sock} kill-session -t {shlex.quote(name)}"), check=False)
@@ -416,12 +830,40 @@ def main():
     parser.add_argument("--tab", action="store_true", help="open the attach in a new kitty tab")
     parser.add_argument("--socket", default="", help="tmux -L socket name")
     parser.add_argument("--hosts", default="", help="comma-separated host aliases")
+    parser.add_argument("--json", action="store_true", help="ls/cat: print JSON")
+    parser.add_argument("--lines", type=int, default=0, help="cat: include up to N lines of history")
+    parser.add_argument("--all", action="store_true", help="cat: include the whole history")
+    parser.add_argument("--enter", action="store_true", help="send: press Enter after the text")
+    parser.add_argument("--force", action="store_true", help="send: allow an attached session")
+    parser.add_argument("--raw", action="store_true", help="send: no [td from ...] prefix")
+    parser.add_argument("--prefix", default="", help="send: use this prefix instead of [td from HOST:PANE] (Harbor)")
     options = parser.parse_args()
     hosts = load_hosts(options.hosts)
     aliases = {alias for alias, _ in hosts}
 
     if options.args and options.args[0] == "ls":
-        print_table(list_all(hosts, options.socket))
+        selected = options.args[1:]
+        unknown = [alias for alias in selected if alias not in aliases and alias != "local"]
+        if unknown:
+            sys.exit(f"unknown host {unknown[0]}; known: {', '.join(sorted(aliases | {'local'}))}")
+        chosen = [host for host in hosts if host[0] in selected] + [("local", "local") for alias in selected if alias == "local" and "local" not in aliases]
+        results = list_all(chosen if selected else hosts, options.socket)
+        if options.json:
+            print(json.dumps([{"host": result["alias"], **{k: v for k, v in result.items() if k != "alias"}} for result in results], ensure_ascii=False))
+        else:
+            print_table(results)
+        return
+    if options.args and options.args[0] == "harbor":
+        harbor_command(options.args, aliases | {"local"}, options)
+        return
+    if options.args and options.args[0] == "hooks":
+        hooks_command(options.args)
+        return
+    if options.args and options.args[0] == "send":
+        send_command(options.args, hosts, aliases | {"local"}, options)
+        return
+    if options.args and options.args[0] == "cat":
+        cat_command(options.args, aliases | {"local"}, options)
         return
     if options.args and options.args[0] == "img":
         image_command(options.args, hosts, options.socket)

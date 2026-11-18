@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## v1.2.0
+
+- `td cat` no longer shows Claude Code's suggested next prompt (dim text in the input box) as if the user had typed it.
+- Harbor: lend a Claude Code pane to another person's agent through a temporary token (default level read, 3 hours).
+  - `scripts/harbor-admin.js grant/ls/revoke/log` manages tokens.
+  - `/harbor/v1` is the guest agent's Bearer API: guide, submit, long-poll.
+  - Requests are queued per token and delivered only while the agent is idle.
+  - `scripts/td-hook` injects the rules, allows only Read, Grep and Glob inside the shared folders (never secrets or dotfile configs), and returns the agent's final message as the reply.
+  - Each token has a hash-chained ledger in `data/harbor/`. The ledger and the token record are deleted 30 days after the token expires or is revoked (`--keep`).
+  - A Harbor tab in the dock lists tokens, their terminal and requests, with Approve/Deny for `approve` mode, Revoke, and opening the pane.
+- `scripts/td-hook`: Claude Code hook that records each pane's agent status (busy, waiting on a permission prompt, idle) under `~/.local/state/terminal-dock/panes/`, and enforces Harbor policies. `td hooks install|uninstall|status` edits `~/.claude/settings.json` after showing the diff and asking.
+- `td harbor activate|deactivate|fetch` are the engine commands Harbor uses. `td send --prefix` replaces the `[td from …]` prefix.
+- Fix: pinning the Browser while the right sidebar was open dropped the drawer into a second grid row below the workbench. The sidebar comes first in the DOM, so auto-placement moved the drawer (column 5) to a new row; it now has `grid-row: 1`.
+- `td ls --json` lists every pane on every host (id, window, command, cwd, title, size, alternate screen), and `td cat HOST:TARGET [--lines N | --all] [--json]` prints a pane's text as plain text through `tmux capture-pane -J`. Both read over SSH and need no device token. `td ls` shows each session's pane title (Claude Code sets it to the task), and `td cat HOST:/TEXT` picks the pane whose title contains TEXT, listing the candidates when none or several match.
+- `td send HOST:TARGET TEXT|- [--enter] [--force] [--raw] [--json]` writes to a pane with guardrails. The text goes in as a bracketed paste prefixed with `[td from HOST:PANE]`, so a receiving agent can tell it from the user. It only writes to a pane whose foreground process group leader is Claude Code or Codex (`claude`, `codex`, or their npm packages under node), never to a shell or other program. With `--enter` it presses Enter only after the pasted text shows on screen: a dialog or menu swallows the paste and would take Enter as its highlighted choice (in testing a Codex update offer ran `brew upgrade`). It is also refused (exit 3) for attached sessions, counting a terminal or the dock's watcher (`--force` overrides), for the caller's own pane, for panes in copy mode, and for text with control characters. Each send is appended to `~/.local/state/terminal-dock/audit.jsonl` on the target host.
+- `skills/harbor-grant/SKILL.md`: when the user says "允许同伴 XXX 接入", the agent works out the session and shared folders, confirms with the user whether to grant and with which level, expiry and approval mode, then runs `harbor-admin.js grant` and hands over the message for the partner. Only Claude Code sessions can be lent.
+- `skills/terminal-dock/SKILL.md`: a skill that teaches Claude Code and Codex to read other terminals with `td` and to write only through `td send`, never raw `tmux send-keys`. A `[td from ...]` message is treated as another agent's request, not the user's instruction, and pane output is treated as data.
+
 ## v1.1.3
 
 - Attachments upload in 4 MiB raw chunks (`POST /api/uploads`, `PUT /api/uploads/chunk`, `DELETE /api/uploads`) that are appended to the file on the target as they arrive, so large videos no longer hit Cloudflare's 100 MB request cap (two videos totalling 80 MB were refused with 413 when sent as one base64 body) and no request runs long enough to time out. A dropped chunk is retried with backoff for about 75 s and resumes from the last confirmed offset; after that the message shows Retry.

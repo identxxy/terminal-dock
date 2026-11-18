@@ -15,9 +15,11 @@ function applyUiState() {
   const showingSsh = state.activeSidebarView === "ssh";
   const showingSessions = state.activeSidebarView === "sessions";
   const showingLayouts = state.activeSidebarView === "layouts";
+  const showingHarbor = state.activeSidebarView === "harbor";
   elements.sshSidebarView.hidden = !showingSsh;
   elements.sessionsSidebarView.hidden = !showingSessions;
   elements.layoutsSidebarView.hidden = !showingLayouts;
+  elements.harborSidebarView.hidden = !showingHarbor;
   elements.appShell.classList.toggle("sidebar-hidden", !state.sidebarVisible);
   elements.appShell.classList.toggle("preview-open", state.previewVisible);
   elements.appShell.classList.toggle("browser-pinned", state.previewVisible && state.previewPinned);
@@ -34,6 +36,8 @@ function applyUiState() {
   elements.showSessionsViewBtn.setAttribute("aria-pressed", String(state.sidebarVisible && showingSessions));
   elements.showLayoutsViewBtn.classList.toggle("active", state.sidebarVisible && showingLayouts);
   elements.showLayoutsViewBtn.setAttribute("aria-pressed", String(state.sidebarVisible && showingLayouts));
+  elements.showHarborViewBtn.classList.toggle("active", state.sidebarVisible && showingHarbor);
+  elements.showHarborViewBtn.setAttribute("aria-pressed", String(state.sidebarVisible && showingHarbor));
   elements.appShell.classList.toggle("resize-enabled", state.resizeEnabled);
   elements.previewDrawer.setAttribute("aria-hidden", String(!state.previewVisible));
   applyBrowserHandle();

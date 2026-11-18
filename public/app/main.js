@@ -14,6 +14,7 @@ function attachEvents() {
   bindViewsEvents();
   bindLayoutsEvents();
   bindLiveEvents();
+  bindHarborEvents();
 }
 
 async function bootAuthenticatedWorkspace() {
@@ -21,6 +22,7 @@ async function bootAuthenticatedWorkspace() {
   renderPaneTree();
   loadLayouts({ adoptActive: true }).catch((error) => setStatus(error.message, "danger"));
   loadReports();
+  loadHarbor();
   state.mobileScreen = "connect";
   resetMobileStack("connect");
   if (isMobileViewport()) {

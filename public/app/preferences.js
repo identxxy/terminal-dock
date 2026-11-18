@@ -56,7 +56,7 @@ function normalizeFontSizePx(value) {
   return FONT_SIZE_RANGE.default;
 }
 
-const SIDEBAR_VIEW_SET = new Set(["ssh", "sessions", "layouts"]);
+const SIDEBAR_VIEW_SET = new Set(["ssh", "sessions", "layouts", "harbor"]);
 
 function loadUiPreferences() {
   try {

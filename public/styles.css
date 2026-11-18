@@ -714,6 +714,10 @@ button {
   grid-template-rows: auto auto minmax(84px, 0.28fr) minmax(0, 1fr) auto;
 }
 
+#harborSidebarView {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
 #layoutsSidebarView {
   grid-template-rows: auto auto auto minmax(0, 1fr);
 }
@@ -1638,6 +1642,9 @@ button {
 
 .app-shell.browser-pinned.preview-open .preview-drawer {
   position: relative;
+  /* The right sidebar (column 7) precedes the drawer in the DOM; without a
+     row, auto-placement would push column 5 down to a new row. */
+  grid-row: 1;
   grid-column: 5;
   right: auto;
   width: auto;
@@ -3433,4 +3440,201 @@ textarea::-webkit-scrollbar-thumb:hover {
   .terminal-line.history-hit {
     animation: none;
   }
+}
+
+/* Harbor view: one card per token, its terminal, then its requests. */
+.activity-item.has-badge {
+  position: relative;
+}
+
+.activity-item.has-badge::after {
+  content: "";
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warning);
+}
+
+.harbor-list {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+}
+
+.harbor-token {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--field-bg), transparent 30%);
+}
+
+.harbor-token:not([data-state="active"]) {
+  opacity: 0.6;
+}
+
+.harbor-token-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: start;
+}
+
+.harbor-token-head strong {
+  display: block;
+  color: var(--text-strong);
+  font-weight: 650;
+}
+
+.harbor-token-head small,
+.harbor-roots {
+  display: block;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: 0.86em;
+}
+
+.harbor-terminal {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--field-bg);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.harbor-terminal:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.harbor-terminal-id {
+  font-family: var(--mono);
+  color: var(--text-strong);
+}
+
+.harbor-terminal-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+
+.harbor-requests {
+  display: grid;
+  gap: 4px;
+}
+
+.harbor-request {
+  display: grid;
+  gap: 4px;
+  border-radius: var(--radius);
+}
+
+.harbor-request[data-status="pending_owner"] {
+  outline: 1px solid var(--warning);
+  padding: 4px;
+}
+
+.harbor-request-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.harbor-request-main:hover {
+  background: var(--hover-bg);
+}
+
+.harbor-status {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--hover-bg);
+  color: var(--muted);
+  font-size: 0.75em;
+  white-space: nowrap;
+}
+
+.harbor-request[data-status="pending_owner"] .harbor-status {
+  color: var(--warning);
+}
+
+.harbor-request[data-status="delivered"] .harbor-status {
+  color: var(--accent);
+}
+
+.harbor-request[data-status="failed"] .harbor-status,
+.harbor-request[data-status="rejected"] .harbor-status {
+  color: var(--danger);
+}
+
+.harbor-request-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.harbor-decide {
+  display: flex;
+  gap: 6px;
+  padding: 0 6px;
+}
+
+.harbor-request-details {
+  display: grid;
+  gap: 4px;
+  padding: 0 6px 6px;
+}
+
+.harbor-label {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.78em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.harbor-request-details pre {
+  margin: 0;
+  max-height: 240px;
+  overflow: auto;
+  padding: 6px;
+  border-radius: var(--radius);
+  background: var(--field-bg);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.86em;
+}
+
+.harbor-tools {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.86em;
+}
+
+.harbor-tools .denied {
+  color: var(--danger);
 }

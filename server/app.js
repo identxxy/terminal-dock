@@ -15,6 +15,7 @@ const { proxiedResourceFromRequest } = require("./browser_resources");
 const { createStaticServer } = require("./static_files");
 const { createApiHandler } = require("./routes");
 const { createUploadStore } = require("./image_upload");
+const { createHarbor } = require("./harbor");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
 
@@ -55,6 +56,7 @@ async function createContext(options = {}) {
       return Boolean(resource) && previewAccess.verifyToken(resource.accessToken, resource.targetId, resource.url);
     },
     uploadStore: createUploadStore(),
+    harbor: createHarbor({ dataDir, tdPath: path.join(ROOT_DIR, "scripts", "td"), runTd: options.runTd }),
     screenCache: createScreenCache(),
     scrollOffsets: new Map(),
     watcherRegistry: new WatcherRegistry()
@@ -68,8 +70,10 @@ async function createApp(options = {}) {
 
   const server = http.createServer(async (request, response) => {
     const requestUrl = new URL(request.url, `http://${request.headers.host}`);
-    // /p/ carries proxied Browser resources (see server/url_proxy.js).
-    if (requestUrl.pathname.startsWith("/api/") || requestUrl.pathname.startsWith("/p/")) {
+    // /p/ carries proxied Browser resources (see server/url_proxy.js); /harbor
+    // is the guest-agent API (server/routes/harbor.js).
+    const harborPath = requestUrl.pathname === "/harbor" || requestUrl.pathname.startsWith("/harbor/");
+    if (requestUrl.pathname.startsWith("/api/") || requestUrl.pathname.startsWith("/p/") || harborPath) {
       await handleApi(request, response, requestUrl);
       return;
     }
@@ -80,6 +84,7 @@ async function createApp(options = {}) {
     return new Promise((resolve) => {
       server.listen(context.config.port, context.config.host, () => {
         context.config.port = server.address().port;
+        context.harbor.resume().catch((error) => console.error("Harbor resume:", error));
         resolve(server.address());
       });
     });

@@ -11,7 +11,8 @@ function collectRoutes(context) {
     ...require("./targets")(context),
     ...require("./stores")(context),
     ...require("./browser")(context),
-    ...require("./panes")(context)
+    ...require("./panes")(context),
+    ...require("./harbor")(context)
   ];
 }
 
