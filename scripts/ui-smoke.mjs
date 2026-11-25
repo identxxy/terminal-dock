@@ -358,6 +358,44 @@ async function desktopChecks() {
       }, saved.id, name, saved.updatedAt);
       expect(stale.status === 409 && stale.hasLayout, "stale write was not refused with the current copy", stale);
 
+      // A slow server: a change made while the previous autosave is still in
+      // flight must not be refused as a conflict with that save (which used to
+      // put the older copy back on screen and move the focus).
+      const slow = await page.eval(async () => {
+        const realFetch = window.fetch;
+        let conflicts = 0;
+        window.fetch = async (url, options) => {
+          if (url === "/api/layouts" && options?.method === "POST") {
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            const response = await realFetch(url, options);
+            conflicts += response.status === 409 ? 1 : 0;
+            return response;
+          }
+          return realFetch(url, options);
+        };
+        try {
+          await splitActivePane("vertical");
+          await new Promise((resolve) => setTimeout(resolve, 900));
+          await splitActivePane("horizontal");
+          const focused = state.activePaneId;
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+          return { conflicts, focusKept: state.activePaneId === focused, leaves: PANE_TREE.leaves(state.paneRoot).length };
+        } finally {
+          window.fetch = realFetch;
+        }
+      });
+      expect(slow.conflicts === 0 && slow.focusKept && slow.leaves === 4, "autosave conflicted with itself on a slow server", slow);
+
+      // Saved from Scratch, the views moved to the layout: Scratch is one view again.
+      const scratchLeaves = await page.eval(async () => {
+        await activateScratchLayout();
+        return PANE_TREE.leaves(state.paneRoot).length;
+      });
+      expect(scratchLeaves === 1, "Scratch still shows the saved layout's views", { scratchLeaves });
+      await page.eval(async (id) => {
+        await applyLayout(id);
+      }, saved.id);
+
       await page.eval(async (id) => {
         await deleteLayout(id);
       }, saved.id);

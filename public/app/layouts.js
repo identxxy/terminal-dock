@@ -49,6 +49,8 @@ const LAYOUT_AUTOSAVE_DELAY_MS = 600;
 
 let layoutAutosaveTimer = 0;
 
+let layoutAutosaveInFlight = false;
+
 let layoutApplying = false;
 
 const { normalizeBrowserState, decodeLayoutPayload } = LAYOUT_UTILS;
@@ -83,9 +85,23 @@ function scheduleLayoutAutosave() {
     return;
   }
   clearTimeout(layoutAutosaveTimer);
-  layoutAutosaveTimer = setTimeout(() => {
+  layoutAutosaveTimer = setTimeout(async () => {
     layoutAutosaveTimer = 0;
-    autosaveActiveLayout().catch((error) => setStatus(`Layout not saved: ${error.message}`, "danger"));
+    // One save at a time: a second one sent with the same updatedAt would be
+    // refused as a conflict with our own first save, and the conflict path
+    // would then put that older copy back on screen.
+    if (layoutAutosaveInFlight) {
+      scheduleLayoutAutosave();
+      return;
+    }
+    layoutAutosaveInFlight = true;
+    try {
+      await autosaveActiveLayout();
+    } catch (error) {
+      setStatus(`Layout not saved: ${error.message}`, "danger");
+    } finally {
+      layoutAutosaveInFlight = false;
+    }
   }, LAYOUT_AUTOSAVE_DELAY_MS);
 }
 
@@ -169,10 +185,17 @@ async function adoptActiveLayout() {
   }
   layoutApplying = true;
   try {
+    // Which view has focus belongs to this device, not to the layout.
+    const keepFocus = PANE_TREE.hasPaneId(payload.paneRoot, state.activePaneId);
     state.paneRoot = payload.paneRoot;
-    state.activePaneId = payload.activePaneId;
+    state.activePaneId = keepFocus ? state.activePaneId : payload.activePaneId;
     savePaneLayout();
     renderPaneTree();
+    // Input and the main screen follow the selection, so it must match the focused view.
+    const actor = activeLeaf().actor;
+    if (state.flatWindows.length && actor.targetId && !sameActor(actor, currentActor())) {
+      await bindSelectionToActor(actor);
+    }
     if (!isMobileViewport()) {
       if (payload.browser) {
         state.previewTargetId = payload.browser.targetId || state.previewTargetId;
@@ -193,20 +216,23 @@ async function adoptActiveLayout() {
   state.activeLayoutSaved = JSON.stringify(layoutSnapshot());
 }
 
+// One view on the focused pane of a layout.
+function singleViewLayout(payload) {
+  const focused = PANE_TREE.findPane(payload.paneRoot, payload.activePaneId) || PANE_TREE.leaves(payload.paneRoot)[0];
+  const view = PANE_TREE.leaf(focused.actor);
+  return { paneRoot: view, activePaneId: view.id, browser: null };
+}
+
 // Switches back to Scratch. Returns false when it was already active.
 async function activateScratchLayout() {
   if (!state.activeLayoutId) {
     return false;
   }
-  const stash = state.scratchLayout;
+  const stash = state.scratchLayout || singleViewLayout(layoutSnapshot());
   state.activeLayoutId = null;
   state.activeLayoutSaved = "";
   state.scratchLayout = null;
-  if (stash) {
-    await applyLayoutPayload(stash);
-  } else {
-    savePaneLayout();
-  }
+  await applyLayoutPayload(stash);
   renderLayouts();
   setStatus("Back to Scratch.", "neutral");
   return true;
@@ -291,7 +317,8 @@ async function saveLayoutAs(name) {
     body: JSON.stringify({ layout: { name, ...payload } })
   });
   if (!state.activeLayoutId) {
-    state.scratchLayout = JSON.parse(JSON.stringify(payload));
+    // The views move to the new layout; Scratch starts over as one view.
+    state.scratchLayout = singleViewLayout(payload);
   }
   state.activeLayoutId = data.layout.id;
   state.activeLayoutSaved = JSON.stringify(payload);

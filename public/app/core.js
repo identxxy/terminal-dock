@@ -650,7 +650,7 @@ async function apiFetch(url, options = {}) {
   }
 
   if (!response.ok) {
-    const error = new Error(payload.error || "Request failed.");
+    const error = new Error(payload.error || `Request failed (HTTP ${response.status}).`);
     error.status = response.status;
     error.payload = payload;
     throw error;

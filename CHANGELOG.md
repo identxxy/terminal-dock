@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## v1.2.1
+
+- Split views and layouts:
+  - Layout autosaves go one at a time. A save sent while the previous one was in flight was refused as a conflict with it, and the older copy then replaced the screen: focus jumped, a view could lose its pane or a split, and the title and typed input no longer matched the view.
+  - When another device's copy of a layout is adopted, this device keeps its focused view and rebinds the selection to it.
+  - Switching views points the selection at the new pane before any request, so late responses for the previous pane are not drawn into the new view or written into its binding.
+  - A secondary view keeps its last screen through a failed refresh and shows the error in its title; request errors without a message now include the HTTP status.
+  - Saving a layout from Scratch moves its views into the layout; Scratch starts over as a single view of the focused pane.
+- `scripts/ui-smoke.mjs` checks autosave against a slow server and the Scratch reset.
+
 ## v1.2.0
 
 - `td cat` no longer shows Claude Code's suggested next prompt (dim text in the input box) as if the user had typed it.

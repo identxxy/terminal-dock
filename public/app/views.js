@@ -282,11 +282,13 @@ function updateSlotHead(paneId) {
   }
   const target = state.targets.find((item) => item.id === node.actor.targetId);
   const treePane = node.actor.targetId === state.selectedTargetId ? state.flatWindows.find((item) => Number(item.id) === node.actor.windowId) : null;
-  const paneTitle = paneId === state.activePaneId ? selectedPane()?.title || "" : secondaryViewers.get(paneId)?.title || treePane?.title || "";
+  const viewer = secondaryViewers.get(paneId);
+  const paneTitle = paneId === state.activePaneId ? selectedPane()?.title || "" : viewer?.title || treePane?.title || "";
   slot.querySelector(".pane-slot-title").textContent = [
     target?.name || node.actor.targetId || "No target",
     node.actor.windowId !== null ? `#${node.actor.windowId}` : "no pane",
-    paneTitle
+    paneTitle,
+    paneId !== state.activePaneId && viewer?.error ? `⚠ ${viewer.error}` : ""
   ]
     .filter(Boolean)
     .join(" · ");
@@ -306,6 +308,7 @@ class SecondaryViewer {
     this.text = "";
     this.data = null;
     this.title = "";
+    this.error = "";
     this.followTail = true;
     this.failures = 0;
     this.timer = null;
@@ -409,9 +412,19 @@ class SecondaryViewer {
     } catch (error) {
       this.failures += 1;
       this.hash = "";
-      this.output.classList.remove("window-layout");
-      delete this.output.dataset.layoutKey;
-      this.output.textContent = `View unavailable: ${error.message}`;
+      if (this.data) {
+        // Keep the last screen through a transient failure; the head shows the error.
+        this.error = error.message;
+        updateSlotHead(this.paneId);
+      } else {
+        this.output.classList.remove("window-layout");
+        delete this.output.dataset.layoutKey;
+        this.output.textContent = `View unavailable: ${error.message}`;
+      }
+    }
+    if (!this.failures && this.error) {
+      this.error = "";
+      updateSlotHead(this.paneId);
     }
     this.inFlight = false;
     if (this.pending && !this.destroyed) {
@@ -466,7 +479,8 @@ async function bindSelectionToActor(actor) {
     hasSelectedWindow() &&
     Number(state.selectedWindowId) === actor.windowId &&
     (state.selectedSocket || "") === (actor.socket || "");
-  if (actor.targetId !== state.selectedTargetId) {
+  const targetChanged = actor.targetId !== state.selectedTargetId;
+  if (targetChanged) {
     state.selectedTargetId = actor.targetId;
     state.editingTargetId = actor.targetId;
     clearSessionSelection();
@@ -474,18 +488,24 @@ async function bindSelectionToActor(actor) {
     writeTargetForm(target);
     renderSavedTargets();
     renderTargetSelect();
+  }
+  // Point the selection at this view before awaiting anything: a session or
+  // screen response for the previous pane arriving meanwhile would otherwise
+  // be drawn into this view and written back into its actor, and typed text
+  // would go to the previous pane.
+  if (!sameSelection) {
+    stashRenderedScreen();
+    invalidateSessionRequests();
+    state.selectedSocket = actor.socket || "";
+    state.selectedWindowId = actor.windowId;
+  }
+  if (targetChanged) {
     setTargetHealth("Switching", "neutral");
     await apiFetch("/api/targets/select", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ targetId: actor.targetId })
     });
-  }
-  if (!sameSelection) {
-    stashRenderedScreen();
-    state.selectedSocket = actor.socket || "";
-    state.selectedWindowId = actor.windowId;
-    invalidateScreenRequests();
   }
   if (actor.windowId !== null) {
     const key = screenKeyFor(state.selectedTargetId, state.selectedSocket, actor.windowId, activeExtent());
