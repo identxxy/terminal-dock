@@ -10,7 +10,7 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="/styles.css?v=1.2.0" />
+    <link rel="stylesheet" href="/styles.css?v=1.2.2" />
   </head>
   <body>
     <div class="app-shell" id="appShell">
@@ -18,7 +18,7 @@
         <div class="brand-block">
           <img class="brand-mark" src="/icon.svg" alt="" width="28" height="28" />
           <div>
-            <p class="eyebrow">Terminal Dock · v1.2.1</p>
+            <p class="eyebrow">Terminal Dock · v1.2.2</p>
             <h1>Remote Terminal Workbench</h1>
           </div>
           <p class="host-stats" id="hostStats" hidden></p>
@@ -480,6 +480,7 @@
           <form class="browser-bar" id="browserAddressForm">
             <button class="icon-button browser-nav-button" id="browserBackBtn" type="button" aria-label="Back to previous URL" disabled>‹</button>
             <button class="icon-button browser-nav-button" id="browserForwardBtn" type="button" aria-label="Forward to next URL" disabled>›</button>
+            <button class="icon-button browser-nav-button" id="browserReloadBtn" type="button" aria-label="Reload this page" title="Reload this page">↻</button>
             <label class="browser-address-field">
               <span class="sr-only">Browser URL</span>
               <input id="browserAddressInput" type="text" spellcheck="false" autocomplete="off" placeholder="https://example.com or file:///tmp/report.html" />
@@ -545,12 +546,12 @@
     <script src="/modules/pane-order.js?v=1.1.2"></script>
     <script src="/modules/pane-fit.js?v=1.1.3"></script>
     <!-- app/*.js share one global scope; main.js runs init(). Order matters only for core.js first and main.js last. -->
-    <script src="/app/core.js?v=1.2.1"></script>
+    <script src="/app/core.js?v=1.2.2"></script>
     <script src="/app/debug.js?v=1.1.1"></script>
     <script src="/app/preferences.js?v=1.2.0"></script>
     <script src="/app/mobile.js?v=1.1.3"></script>
     <script src="/app/shell.js?v=1.2.0"></script>
-    <script src="/app/browser.js?v=1.1.4"></script>
+    <script src="/app/browser.js?v=1.2.2"></script>
     <script src="/app/screen.js?v=1.1.6"></script>
     <script src="/app/composer.js?v=1.1.5"></script>
     <script src="/app/upload-queue.js?v=1.1.0"></script>

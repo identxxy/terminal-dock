@@ -368,6 +368,7 @@ const elements = {
   browserAddressInput: document.querySelector("#browserAddressInput"),
   browserBackBtn: document.querySelector("#browserBackBtn"),
   browserForwardBtn: document.querySelector("#browserForwardBtn"),
+  browserReloadBtn: document.querySelector("#browserReloadBtn"),
   browserHistorySelect: document.querySelector("#browserHistorySelect"),
   browserGoBtn: document.querySelector("#browserGoBtn"),
   downloadPreviewBtn: document.querySelector("#downloadPreviewBtn"),

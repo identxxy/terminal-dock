@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v1.2.2
+
+- Browser: while pinned, each page keeps its own frame (the 6 most recent), so going back, forward, through History or to a link already opened shows the page as it was instead of reloading it. Hidden pages keep running. Unpinning closes all but the current page.
+- Browser: a reload button (↻) next to forward reloads the current page with a fresh access token.
+- `scripts/ui-smoke.mjs` checks that a pinned Browser keeps pages, reload reloads, and unpin drops them.
+
 ## v1.2.1
 
 - Split views and layouts:

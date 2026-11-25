@@ -1792,7 +1792,7 @@ button {
 .browser-bar {
   min-width: 0;
   display: grid;
-  grid-template-columns: 32px 32px minmax(0, 1fr) minmax(92px, auto) auto;
+  grid-template-columns: 32px 32px 32px minmax(0, 1fr) minmax(92px, auto) auto;
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
@@ -3006,7 +3006,7 @@ textarea::-webkit-scrollbar-thumb:hover {
   }
 
   .browser-bar {
-    grid-template-columns: 30px 30px minmax(0, 1fr) 42px;
+    grid-template-columns: 30px 30px 30px minmax(0, 1fr) 42px;
     gap: 6px;
     padding: 7px 8px;
   }

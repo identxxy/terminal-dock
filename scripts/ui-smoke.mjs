@@ -324,6 +324,42 @@ async function desktopChecks() {
       return { label: closed.handleLabel, collapsed: Math.round(box.width), hovered: Math.round(hovered.width) };
     });
 
+    await check("desktop: pinned Browser keeps pages loaded; reload reloads; unpin drops them", async () => {
+      const pageA = `file://${DECK_FIXTURE}`;
+      const pageB = `file://${path.dirname(DECK_FIXTURE)}/`;
+      // Counts load events per frame; frames are told apart by a marker property.
+      const loads = () => page.eval(() => [...document.querySelectorAll(".preview-frame")].map((frame) => ({
+        tag: frame.__smokeTag || "", loads: frame.__smokeLoads || 0, shown: frame === elements.urlPreviewFrame, hidden: frame.hidden
+      })));
+      const watch = () => page.eval(() => document.querySelectorAll(".preview-frame").forEach((frame, index) => {
+        if (!frame.__smokeTag) {
+          frame.__smokeTag = `f${index}-${Math.random().toString(36).slice(2, 6)}`;
+          frame.__smokeLoads = 0;
+          frame.addEventListener("load", () => { frame.__smokeLoads += 1; });
+        }
+      }));
+      await page.eval(() => { if (!state.previewPinned) toggleBrowserPin(); });
+      await page.eval((url) => loadUrlPreview(url, { history: "reset" }), pageA);
+      await watch();
+      await page.eval((url) => loadUrlPreview(url), pageB);
+      await watch();
+      await delay(1500);
+      const two = await loads();
+      expect(two.length === 2 && two[1].shown && !two[0].shown && two[0].hidden, "second page did not open in its own frame", two);
+      await page.eval(() => goBackPreview());
+      await delay(1000);
+      const back = await loads();
+      expect(back.length === 2 && back[0].shown && back[0].loads === two[0].loads, "going back reloaded the first page", { two, back });
+      await page.eval(() => document.querySelector("#browserReloadBtn").click());
+      await delay(1500);
+      const reloaded = await loads();
+      expect(reloaded[0].loads > back[0].loads, "reload button did not reload the page", { back, reloaded });
+      await page.eval(() => toggleBrowserPin());
+      const unpinned = await loads();
+      expect(unpinned.length === 1 && unpinned[0].shown, "unpinning did not drop the kept pages", unpinned);
+      return { kept: two.length, reloads: reloaded[0].loads - back[0].loads };
+    });
+
     await check("desktop: layout save, autosave on split, 409 on a stale write, delete", async () => {
       const name = `smoke-${Date.now().toString(36)}`;
       await page.eval(() => document.querySelector("#closePreviewBtn").click());

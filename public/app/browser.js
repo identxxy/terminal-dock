@@ -159,26 +159,109 @@ async function refreshPreviewAccessToken() {
   return Boolean(state.previewAccessToken);
 }
 
+// While the Browser is pinned, every page keeps its own frame (the most
+// recent PREVIEW_FRAME_LIMIT), so going back to one shows it as it was left,
+// scroll and state included, instead of loading it again.
+const PREVIEW_FRAME_LIMIT = 6;
+
+// "targetId|url" -> frame, least recently shown first.
+const previewFrames = new Map();
+
+function bindPreviewFrame(frame) {
+  frame.addEventListener("load", () => {
+    if (frame === elements.urlPreviewFrame && state.previewVisible && state.previewUrl) {
+      elements.previewAddress.textContent = `Loaded ${state.previewUrl}`;
+    }
+  });
+}
+
+function showPreviewFrame(frame) {
+  if (frame === elements.urlPreviewFrame) {
+    return;
+  }
+  frame.hidden = false;
+  elements.urlPreviewFrame.hidden = true;
+  elements.urlPreviewFrame = frame;
+}
+
+function newPreviewFrame() {
+  const frame = elements.urlPreviewFrame.cloneNode(false);
+  frame.removeAttribute("id");
+  delete frame.dataset.src;
+  delete frame.dataset.key;
+  elements.urlPreviewFrame.after(frame);
+  bindPreviewFrame(frame);
+  return frame;
+}
+
+// Keeps only the shown frame: unpinning, or too many pages kept.
+function dropPreviewFrames(limit = 1) {
+  for (const [key, frame] of previewFrames) {
+    if (previewFrames.size <= limit) {
+      break;
+    }
+    if (frame !== elements.urlPreviewFrame) {
+      previewFrames.delete(key);
+      frame.remove();
+    }
+  }
+}
+
+function navigatePreviewFrame(frame, src) {
+  frame.dataset.src = src;
+  // location.replace keeps the frame out of the browser's history, so a
+  // swipe back on the phone pops a deck screen instead of a frame page.
+  try {
+    frame.contentWindow.location.replace(src);
+  } catch (error) {
+    frame.src = src;
+  }
+}
+
 function syncPreviewFrame() {
   const target = getPreviewTarget();
   if (!target || !state.previewUrl) {
     return false;
   }
 
-  const nextSrc = createPreviewResourceUrl(state.previewUrl, target.id);
   elements.previewTitle.textContent = target.name ? `${target.name} Browser` : "Browser";
   elements.previewAddress.textContent = state.previewUrl;
-  if (elements.urlPreviewFrame.dataset.src !== nextSrc) {
-    elements.urlPreviewFrame.dataset.src = nextSrc;
-    // location.replace keeps the frame out of the browser's history, so a
-    // swipe back on the phone pops a deck screen instead of a frame page.
-    try {
-      elements.urlPreviewFrame.contentWindow.location.replace(nextSrc);
-    } catch (error) {
-      elements.urlPreviewFrame.src = nextSrc;
-    }
+  const key = `${target.id}|${state.previewUrl}`;
+  const kept = previewFrames.get(key);
+  if (kept && state.previewPinned) {
+    previewFrames.delete(key);
+    previewFrames.set(key, kept);
+    showPreviewFrame(kept);
+    return true;
+  }
+  if (state.previewPinned && elements.urlPreviewFrame.dataset.key && elements.urlPreviewFrame.dataset.key !== key) {
+    // Keep the page being left loaded and open this one beside it.
+    showPreviewFrame(newPreviewFrame());
+  }
+  const frame = elements.urlPreviewFrame;
+  if (previewFrames.get(frame.dataset.key) === frame) {
+    previewFrames.delete(frame.dataset.key);
+  }
+  frame.dataset.key = key;
+  previewFrames.set(key, frame);
+  dropPreviewFrames(state.previewPinned ? PREVIEW_FRAME_LIMIT : 1);
+  const nextSrc = createPreviewResourceUrl(state.previewUrl, target.id);
+  if (frame.dataset.src !== nextSrc) {
+    navigatePreviewFrame(frame, nextSrc);
   }
   return true;
+}
+
+async function reloadPreview() {
+  const target = getPreviewTarget();
+  if (!target || !state.previewUrl) {
+    setPreviewStatus("No Browser page to reload yet.", "neutral");
+    return;
+  }
+  await refreshPreviewAccessToken();
+  syncPreviewFrame();
+  navigatePreviewFrame(elements.urlPreviewFrame, createPreviewResourceUrl(state.previewUrl, target.id));
+  setPreviewStatus(`Reloading ${state.previewUrl}`, "neutral");
 }
 
 function closePreview() {
@@ -219,6 +302,9 @@ async function downloadPreview() {
 
 function toggleBrowserPin() {
   state.previewPinned = !state.previewPinned;
+  if (!state.previewPinned) {
+    dropPreviewFrames();
+  }
   if (state.previewPinned && state.previewUrl) {
     state.previewVisible = true;
   }
@@ -370,6 +456,15 @@ function handleBrowserMessage(event) {
     try {
       const url = normalizeBrowserUrl(message.url);
       replaceLoadedPreviewUrl(url);
+      // A redirect or an in-page navigation: the frame now holds this URL.
+      const frame = elements.urlPreviewFrame;
+      const key = `${state.previewTargetId}|${state.previewUrl}`;
+      if (frame.dataset.key !== key && previewFrames.get(frame.dataset.key) === frame) {
+        previewFrames.delete(frame.dataset.key);
+        previewFrames.get(key)?.remove();
+        frame.dataset.key = key;
+        previewFrames.set(key, frame);
+      }
       setPreviewStatus(`Loaded ${url}`, "neutral");
       applyUiState();
       recordReport(url, message.title).catch(() => {});
@@ -587,11 +682,11 @@ function bindBrowserEvents() {
     }
   });
 
-  elements.urlPreviewFrame.addEventListener("load", () => {
-    if (state.previewVisible && state.previewUrl) {
-      elements.previewAddress.textContent = `Loaded ${state.previewUrl}`;
-    }
+  elements.browserReloadBtn.addEventListener("click", () => {
+    reloadPreview().catch((error) => setPreviewStatus(error.message, "danger"));
   });
+
+  bindPreviewFrame(elements.urlPreviewFrame);
 
   document.addEventListener("pointerdown", maybeCloseUnpinnedBrowser, true);
 
